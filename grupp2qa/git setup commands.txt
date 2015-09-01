@@ -1,0 +1,5 @@
+git config --global user.name “<your name>”
+git config --global user.email “<your email>”
+git config --global color.ui “auto”
+
+git clone git@github.com:s0cketp0cket/group2-si.git
