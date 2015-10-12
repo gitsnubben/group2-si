@@ -23,6 +23,14 @@
 request_context_t *rctx = NULL;
 sctp_assoc_t assoc_id = 0;
 
+/* Per-prefix info about filesize range */
+struct test_info {
+	int is_default;
+};
+
+GSList *in4_enabled = NULL;
+GSList *in6_enabled = NULL;
+
 /**********************************************************************/
 /* - Headers -                                                        */
 /**********************************************************************/
@@ -190,13 +198,6 @@ void tuneForLossResilient() {
 /* - Interface for tune-functions -                                   */
 /**********************************************************************/
 
-/* Per-prefix info about filesize range */
-struct test_info {
-};
-
-//GSList *in4_enabled = NULL;
-//GSList *in6_enabled = NULL;
-
 void freepolicyinfo(gpointer elem, gpointer data) {
 	/*struct src_prefix_list *spl = elem;
 
@@ -337,6 +338,13 @@ struct socketopt *find_and_return_cat(struct socketopt *opts) {
 /*                                                                    */
 /**********************************************************************/
 /**********************************************************************/
+/* - Auxilliary -                                                     */
+/**********************************************************************/
+
+void set_policy_info(gpointer elem, gpointer data) {
+}
+
+/**********************************************************************/
 /* - Public interface; requests -                                     */
 /**********************************************************************/
 
@@ -361,24 +369,19 @@ int on_connect_request(request_context_t *rctx_param, struct event_base *base) {
 /**********************************************************************/
 
 int init(mam_context_t *mctx) {
-	if(TRACE_FLOW) { printf("\tENTERING: init()\n"); fflush(stdout); }
-	//open_fp();
-	/*printf("\nPolicy module \"filesize\" is loading.\n");
+	if(TRACE_FLOW) { printf("\n\tENTERING: init() for policy_test\n"); fflush(stdout); }
 	g_slist_foreach(mctx->prefixes, &set_policy_info, NULL);
 	make_v4v6_enabled_lists (mctx->prefixes, &in4_enabled, &in6_enabled);
-	printf("\nPolicy module \"filesize\" has been loaded.\n");*/
-	if(TRACE_FLOW) { printf("\tLEAVING: init()\n"); fflush(stdout); }
+	if(TRACE_FLOW) { printf("\n\tLEAVING: init()\n"); fflush(stdout); }
 	return 0;
 }
 
 int cleanup(mam_context_t *mctx) {
-	if(TRACE_FLOW) { printf("\tENTERING: cleanup()\n"); fflush(stdout); }
-	//close_fp();
-	/*g_slist_free(in4_enabled);
+	if(TRACE_FLOW) { printf("\n\tENTERING: cleanup() for policy_test\n"); fflush(stdout); }
+	g_slist_free(in4_enabled);
 	g_slist_free(in6_enabled);
 	g_slist_foreach(mctx->prefixes, &freepolicyinfo, NULL);
-	printf("\nPolicy module \"filesize\" cleaned up.\n");*/
-	if(TRACE_FLOW) { printf("\tLEAVING: cleanup()\n"); fflush(stdout); }
+	if(TRACE_FLOW) { printf("\n\tLEAVING: cleanup()\n"); fflush(stdout); }
 	return 0;
 }
 
@@ -619,7 +622,7 @@ void set_delayed_sack(u_int32_t delay, u_int32_t freq) {
 /* - Set Retransmission timeout parameters -                          */
 /**********************************************************************/
 
-void set_RTO(u_int32_t initial, u_int32_t max, u_int32_t min){
+void set_RTO(u_int32_t initial, u_int32_t max, u_int32_t min) {
 	struct sctp_rtoinfo *val = malloc(sizeof(struct sctp_rtoinfo));
 	val->srto_assoc_id = assoc_id;
 	val->srto_initial  = initial; //only for read??
@@ -642,7 +645,7 @@ void set_RTO(u_int32_t initial, u_int32_t max, u_int32_t min){
 /* - Set Initialization parameters -                                  */
 /**********************************************************************/
 
-void set_initparams(u_int16_t num_ostreams, u_int16_t max_instreams, u_int16_t max_attempts, u_int16_t max_init_timeo){
+void set_initparams(u_int16_t num_ostreams, u_int16_t max_instreams, u_int16_t max_attempts, u_int16_t max_init_timeo) {
 	struct sctp_initmsg *val = malloc(sizeof(struct sctp_initmsg));
 	val->sinit_num_ostreams   = num_ostreams;
 	val->sinit_max_instreams  = max_instreams;
