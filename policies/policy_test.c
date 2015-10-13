@@ -24,7 +24,7 @@
 request_context_t *rctx = NULL;
 sctp_assoc_t assoc_id = 0;
 
-/* Per-prefix info about filesize range */
+//Per-prefix info 
 struct test_info {
 	int is_default;
 };
@@ -56,8 +56,28 @@ void tuneForLossSensitive();
 void tuneForLossTolerant();
 void tuneForLossResilient();
 
+void detuneForBulkCategory();
+void detuneForQueryCategory();
+void detuneForStreamCategory();
+void detuneForControlTrafficCategory();
+void detuneForKeepaliveCategory();
+void detuneForFilesize();
+void detuneForDuration();
+void detuneForBitrate();
+void detuneForRandomBursts();
+void detuneForRegularBursts();
+void detuneForNoBursts();
+void detuneForBulkBursts();
+void detuneForStreamTimeliness();
+void detuneForInteractiveTimeliness();
+void detuneForTransferTimeliness();
+void detuneForBackgroundTrafficTimeliness();
+void detuneForLossSensitive();
+void detuneForLossTolerant();
+void detuneForLossResilient();
+
 void set_options(int intent, request_context_t *rctx);
-struct socketopt *find_and_return_cat(socketopt_t *opts);
+void fint_intents_in_ctx(struct socketopt *opts);
 void match_cat(socketopt_t *opts);
 
 /**********************************************************************/
@@ -113,87 +133,76 @@ void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]
 /* - Categories -                                                     */
 /**********************************************************************/
 
-void tuneForBulkCategory() { //TEST
-	printf("\n %d\n %d", rctx->ctx->calls_performed, 0x0008);
+void tuneForBulkCategory() {
+	 printf("\n %d\n %d", rctx->ctx->calls_performed, 0x0008);
 	if((rctx->ctx->calls_performed & 0x0008) != 0x0008) // 0x0008 = MUACC_BIND_CALLED
 		printf("\n OK TO BIND");
 	else
 		printf("\n NOT OK!");
 }
 
-void tuneForQueryCategory() {
-	setNoDelay(1);
-}
+void tuneForQueryCategory() { }
+void tuneForStreamCategory() { }
+void tuneForControlTrafficCategory() { }
+void tuneForKeepaliveCategory() { }
 
-void tuneForStreamCategory() {
-	setMaximumRetransmissions(2);
-	setNoDelay(1);
-}
-
-void tuneForControlTrafficCategory() {
-}
-
-void tuneForKeepaliveCategory() {
-}
+void detuneForBulkCategory() { }
+void detuneForQueryCategory() { }
+void detuneForStreamCategory() { }
+void detuneForControlTrafficCategory() { }
+void detuneForKeepaliveCategory() { }
 
 /**********************************************************************/
 /* - Filesize -                                                       */
 /**********************************************************************/
 
-void tuneForGivenFilesize(int fileSize) {	
-}
+void tuneForGivenFilesize(int fileSize) { }
+void tuneForGivenDuration(int duration) { }
+void tuneForGivenBitrate(int bitrate) { }
 
-void tuneForGivenDuration(int duration) {
-}
-
-void tuneForGivenBitrate(int bitrate) {
-}
+void detuneForFilesize() { }
+void detuneForDuration() { }
+void detuneForBitrate() { }
 
 /**********************************************************************/
 /* - Burst behavior -                                                 */
 /**********************************************************************/
 
-void tuneForRandomBursts() {
-}
+void tuneForRandomBursts() { }
+void tuneForRegularBursts() { }
+void tuneForNoBursts() { }
+void tuneForBulkBursts() { }
 
-void tuneForRegularBursts() {
-}
-
-void tuneForNoBursts() {
-}
-
-void tuneForBulkBursts() {
-}
+void detuneForRandomBursts() { }
+void detuneForRegularBursts() { }
+void detuneForNoBursts() { }
+void detuneForBulkBursts() { }
 
 /**********************************************************************/
 /* - Timeliness -                                                     */
 /**********************************************************************/
 
-void tuneForStreamTimeliness() {
-}
+void tuneForStreamTimeliness() { }
+void tuneForInteractiveTimeliness() { }
+void tuneForTransferTimeliness() { }
+void tuneForBackgroundTrafficTimeliness() { }
 
-void tuneForInteractiveTimeliness() {
-}
-
-void tuneForTransferTimeliness() {
-}
-
-void tuneForBackgroundTrafficTimeliness() {
-}
+void detuneForStreamTimeliness() { }
+void detuneForInteractiveTimeliness() { }
+void detuneForTransferTimeliness() { }
+void detuneForBackgroundTrafficTimeliness() { }
 
 /**********************************************************************/
 /* - Loss -                                                           */
 /**********************************************************************/
 
-void tuneForLossSensitive() {
-}
+void tuneForLossSensitive() { }
+void tuneForLossTolerant() { }
+void tuneForLossResilient() { }
 
-void tuneForLossTolerant() {
-}
-
-void tuneForLossResilient() {
-	
-}
+void detuneForLossSensitive() { }
+void detuneForLossTolerant() { }
+void detuneForLossResilient() { }
 
 /**********************************************************************/
 /*                                                                    */
@@ -201,7 +210,7 @@ void tuneForLossResilient() {
 /*                                                                    */
 /**********************************************************************/
 /**********************************************************************/
-/* - Interface for tune-functions -                                   */
+/* - *wOOt* -                                                         */
 /**********************************************************************/
 
 void freepolicyinfo(gpointer elem, gpointer data) {
@@ -213,10 +222,6 @@ void freepolicyinfo(gpointer elem, gpointer data) {
 }
 
 /**********************************************************************/
-/* - Interface for tune-functions -                                   */
-/**********************************************************************/
-
-/**********************************************************************/
 /* - Intent match; add new intents here -                             */
 /**********************************************************************/
 
@@ -225,8 +230,10 @@ void match_cat(struct socketopt* opts) {
 	if(opts != NULL) {
 		int intent = *(int*)opts->optval;
 		int intentType = opts->optname;
-		
+		if(TRACE_DETAILED_FLOW) { printf("\tINTENT RECEIVED: category is %d, value is %d\n", intentType, intent); fflush(stdout); }
 		if(intentType == INTENT_CATEGORY) {
+			
+			//Start of tune, if intent is POSITIVE
 			if(intent == INTENT_QUERY) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_QUERY\n\a"); }
 				tuneForQueryCategory();
@@ -247,8 +254,31 @@ void match_cat(struct socketopt* opts) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_STREAM\n\a\a\a\a\a"); }
 				tuneForStreamCategory();
 			}
+			
+			//Start of detune, if intent is NEGATIVE
+			else if(intent == -INTENT_QUERY) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_QUERY\n\a"); }
+				detuneForQueryCategory();
+			}
+			else if(intent == -INTENT_BULKTRANSFER) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_BULKTRANSFER\n\a\a"); }
+				detuneForBulkCategory();
+			}
+			else if(intent == -INTENT_CONTROLTRAFFIC) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_CONTROLTRAFFIC\n\a\a\a"); }
+				detuneForControlTrafficCategory();
+			}
+			else if(intent == -INTENT_KEEPALIVES) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_KEEPALIVES\n\a\a\a\a"); }
+				detuneForKeepaliveCategory();
+			}
+			else if(intent == -INTENT_STREAM) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_STREAM\n\a\a\a\a\a"); }
+				detuneForStreamCategory();
+			}
 		}
 		
+		//Start of tune, if intent is POSITIVE
 		else if(intentType == INTENT_FILESIZE) {
 			if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_FILESIZE\n"); }
 			tuneForGivenFilesize(0);
@@ -262,7 +292,22 @@ void match_cat(struct socketopt* opts) {
 			tuneForGivenBitrate(0);
 		}
 		
+		//Start of detune, if intent is NEGATIVE
+		else if(intentType == -INTENT_FILESIZE) {
+			if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_FILESIZE\n"); }
+			detuneForFilesize();
+		}
+		else if(intentType == -INTENT_DURATION) {
+			if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_DURATION\n"); }
+			detuneForDuration();
+		}
+		else if(intentType == -INTENT_BITRATE) {
+			if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_BITRATE\n"); }
+			detuneForBitrate();
+		}
+		
 		if(intentType == INTENT_BURSTINESS) {
+			//Start of tune, if intent is POSITIVE
 			if(intent == INTENT_RANDOMBURSTS) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_RANDOMBURSTS\n"); }
 				tuneForRandomBursts();
@@ -279,9 +324,29 @@ void match_cat(struct socketopt* opts) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_BULK\n"); }
 				tuneForBulkBursts();
 			}
+			
+			//Start of detune, if intent is NEGATIVE
+			else if(intent == -INTENT_RANDOMBURSTS) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_RANDOMBURSTS\n"); }
+				detuneForRandomBursts();
+			}
+			else if(intent == -INTENT_REGULARBURSTS) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_REGULARBURSTS\n"); }
+				detuneForRegularBursts();
+			}
+			else if(intent == -INTENT_NOBURSTS) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_NOBURSTS\n"); }
+				detuneForNoBursts();
+			}
+			else if(intent == -INTENT_BULK) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_BULK\n"); }
+				detuneForBulkBursts();
+			}
 		}
 		
+
 		if(intentType == INTENT_TIMELINESS) {
+			//Start of tune, if intent is POSITIVE
 			if(intent == INTENT_STREAMING) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_STREAMING\n"); }
 				tuneForStreamTimeliness();
@@ -298,9 +363,28 @@ void match_cat(struct socketopt* opts) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_BACKGROUNDTRAFFIC\n"); }
 				tuneForBackgroundTrafficTimeliness();
 			}
+			
+			//Start of detune, if intent is NEGATIVE
+			else if(intent == -INTENT_STREAMING) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_STREAMING\n"); }
+				detuneForStreamTimeliness();
+			}
+			else if(intent == -INTENT_INTERACTIVE) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_INTERACTIVE\n"); }
+				detuneForInteractiveTimeliness();
+			}
+			else if(intent == -INTENT_TRANSFER) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_TRANSFER\n"); }
+				detuneForTransferTimeliness();
+			}
+			else if(intent == -INTENT_BACKGROUNDTRAFFIC) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_BACKGROUNDTRAFFIC\n"); }
+				detuneForBackgroundTrafficTimeliness();
+			}
 		}
 		
 		if(intentType == INTENT_RESILIENCE) {
+			//Start of tune, if intent is POSITIVE
 			if(intent == INTENT_SENSITIVE) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_SENSITIVE\n"); }
 				tuneForLossSensitive();
@@ -313,6 +397,20 @@ void match_cat(struct socketopt* opts) {
 				if(TRACE_DETAILED_FLOW) { printf("\t  INTENT_RESILIENT\n"); }
 				tuneForLossResilient();
 			}
+			
+			//Start of detune, if intent is NEGATIVE
+			else if(intent == -INTENT_SENSITIVE) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_SENSITIVE\n"); }
+				detuneForLossSensitive();
+			}
+			else if(intent == -INTENT_TOLERANT) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_TOLERANT\n"); }
+				detuneForLossTolerant();
+			}
+			else if(intent == -INTENT_RESILIENT) {
+				if(TRACE_DETAILED_FLOW) { printf("\t  REMOVE INTENT_RESILIENT\n"); }
+				detuneForLossResilient();
+			}
 		}
 	}
 	if(TRACE_FLOW) { printf("\tLEAVING: match_cat()\n"); fflush(stdout); }
@@ -322,25 +420,24 @@ void match_cat(struct socketopt* opts) {
 /* - Intent match; add new intents here -                             */
 /**********************************************************************/
 
-struct socketopt *find_and_return_cat(struct socketopt *opts) {
+void fint_intents_in_ctx(struct socketopt *opts) {
 	if(TRACE_FLOW) { printf("\tENTERING: find_and_return_cat()\n"); fflush(stdout); }
 	struct socketopt* temp = opts;
 	while(temp != NULL) {
 		if(TRACE_DETAILED_FLOW) { printf("\t  LOOPING\n"); fflush(stdout); }
-		if(temp->level == SOL_INTENTS && temp->optname == INTENT_CATEGORY) {
+		if(temp->level == SOL_INTENTS) {
 			if(TRACE_DETAILED_FLOW) { printf("\t  MATCHING\n"); fflush(stdout); }
 			if(TRACE_FLOW) { printf("\tLEAVING: find_and_return_cat()\n"); fflush(stdout); }
-			return temp;
+			match_cat(temp);
 		}
 		temp = temp->next;
 	}
 	if(TRACE_FLOW) { printf("\tLEAVING: find_and_return_cat()\n"); fflush(stdout); }
-	return NULL;
 }
 
 /**********************************************************************/
 /*                                                                    */
-/* - PUBLIC INTERFACE -                                               */
+/* - PUBLIC INTERFACE FOR MAM -                                       */
 /*                                                                    */
 /**********************************************************************/
 /**********************************************************************/
@@ -364,7 +461,7 @@ int on_resolve_request(request_context_t *rctx_param, struct event_base *base) {
 int on_connect_request(request_context_t *rctx_param, struct event_base *base) {
 	rctx = rctx_param;
 	if(TRACE_FLOW) { printf("\tENTERING: on_resolve_request()\n"); fflush(stdout); }
-	match_cat(find_and_return_cat(rctx->ctx->sockopts_current));
+	fint_intents_in_ctx(rctx->ctx->sockopts_current);
 	_muacc_send_ctx_event(rctx, muacc_act_connect_resp);
 	if(TRACE_FLOW) { printf("\tLEAVING: on_resolve_request()\n"); fflush(stdout); }
 	return 0;
