@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/sctp.h>
+#include <arpa/inet.h>
 #include "policy.h"
 #include "policy_util.h"
 
@@ -112,7 +113,12 @@ void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]
 /* - Categories -                                                     */
 /**********************************************************************/
 
-void tuneForBulkCategory() {
+void tuneForBulkCategory() { //TEST
+	printf("\n %d\n %d", rctx->ctx->calls_performed, 0x0008);
+	if((rctx->ctx->calls_performed & 0x0008) != 0x0008) // 0x0008 = MUACC_BIND_CALLED
+		printf("\n OK TO BIND");
+	else
+		printf("\n NOT OK!");
 }
 
 void tuneForQueryCategory() {
@@ -368,10 +374,28 @@ int on_connect_request(request_context_t *rctx_param, struct event_base *base) {
 /* - Public interface; start & end -                                  */
 /**********************************************************************/
 
+// JUST FOR TEST
+void print_addresses(gpointer elem, gpointer data) {
+	struct src_prefix_list *pfx = elem;
+	char addr_str[INET6_ADDRSTRLEN+1]; /** String for debug / error printing */
+
+	/* Print first address of this prefix */
+	if (pfx->family == AF_INET)
+	{
+		inet_ntop(AF_INET, &( ((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr ), addr_str, sizeof(addr_str));
+		printf("\naddress: %s", addr_str);
+	}
+}
+
 int init(mam_context_t *mctx) {
 	if(TRACE_FLOW) { printf("\n\tENTERING: init() for policy_test\n"); fflush(stdout); }
 	g_slist_foreach(mctx->prefixes, &set_policy_info, NULL);
 	make_v4v6_enabled_lists (mctx->prefixes, &in4_enabled, &in6_enabled);
+	
+	g_slist_foreach(mctx->prefixes, &print_addresses, NULL);
+	
+	g_slist_foreach(in4_enabled, &print_addresses, NULL);
+	
 	if(TRACE_FLOW) { printf("\n\tLEAVING: init()\n"); fflush(stdout); }
 	return 0;
 }
