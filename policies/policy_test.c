@@ -79,6 +79,7 @@ void detuneForLossResilient();
 void set_options(int intent, request_context_t *rctx);
 void fint_intents_in_ctx(struct socketopt *opts);
 void match_cat(socketopt_t *opts);
+void print_addresses(gpointer elem, gpointer data);
 
 /**********************************************************************/
 /*                                                                    */
@@ -134,11 +135,35 @@ void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]
 /**********************************************************************/
 
 void tuneForBulkCategory() {
-	 printf("\n %d\n %d", rctx->ctx->calls_performed, 0x0008);
-	if((rctx->ctx->calls_performed & 0x0008) != 0x0008) // 0x0008 = MUACC_BIND_CALLED
+	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED) {
 		printf("\n OK TO BIND");
+		
+		struct src_prefix_list *pfx = in4_enabled->data;
+		struct sockaddr_in my_addr;
+		my_addr.sin_family = AF_INET;
+		//my_addr.sin_addr.s_addr = (((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr).s_addr;
+		char addr_str[INET6_ADDRSTRLEN+1]; /** String for debug / error printing */
+		inet_ntop(AF_INET, &( ((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr ), addr_str, sizeof(addr_str));
+		my_addr.sin_addr.s_addr = inet_addr(addr_str);
+		//serv_addr.sin_addr.s_addr = inet_addr(SERV_ADDR);
+		my_addr.sin_port = htons(54321);
+		
+		printf("\n sockfd: %d", rctx->ctx->sockfd);
+		
+		if(bind(rctx->ctx->sockfd, (struct sockaddr *) &my_addr, sizeof(my_addr)) < 0) {
+			printf("FAILED: bind()");
+			printf("\nsocket error: %d, %s\n", errno, strerror(errno));
+			return ;
+		}
+		rctx->ctx->calls_performed += MUACC_BIND_CALLED;
+	}
 	else
 		printf("\n NOT OK!");
+		
+	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED)
+		printf("\n BIND YESSSSSS!");
+	else
+		printf("\n BIND NOOOOOOO!");
 }
 
 void tuneForQueryCategory() { }
@@ -475,7 +500,6 @@ int on_connect_request(request_context_t *rctx_param, struct event_base *base) {
 void print_addresses(gpointer elem, gpointer data) {
 	struct src_prefix_list *pfx = elem;
 	char addr_str[INET6_ADDRSTRLEN+1]; /** String for debug / error printing */
-
 	/* Print first address of this prefix */
 	if (pfx->family == AF_INET)
 	{
