@@ -136,34 +136,13 @@ void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]
 
 void tuneForBulkCategory() {
 	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED) {
-		printf("\n OK TO BIND");
-		
 		struct src_prefix_list *pfx = in4_enabled->data;
-		struct sockaddr_in my_addr;
-		my_addr.sin_family = AF_INET;
-		//my_addr.sin_addr.s_addr = (((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr).s_addr;
-		char addr_str[INET6_ADDRSTRLEN+1]; /** String for debug / error printing */
-		inet_ntop(AF_INET, &( ((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr ), addr_str, sizeof(addr_str));
-		my_addr.sin_addr.s_addr = inet_addr(addr_str);
-		//serv_addr.sin_addr.s_addr = inet_addr(SERV_ADDR);
-		my_addr.sin_port = htons(54321);
-		
-		printf("\n sockfd: %d", rctx->ctx->sockfd);
-		
-		if(bind(rctx->ctx->sockfd, (struct sockaddr *) &my_addr, sizeof(my_addr)) < 0) {
-			printf("FAILED: bind()");
-			printf("\nsocket error: %d, %s\n", errno, strerror(errno));
-			return ;
-		}
-		rctx->ctx->calls_performed += MUACC_BIND_CALLED;
+		struct sockaddr *addr = pfx->if_addrs->addr;
+		if(TRACE_DETAILED_FLOW) { char addr_str[INET6_ADDRSTRLEN+1]; inet_ntop(AF_INET, &( ((struct sockaddr_in *) (addr))->sin_addr ), addr_str, sizeof(addr_str)); printf("\t  ADDRESS CHOSEN: %s\n", addr_str); }
+		rctx->ctx->bind_sa_suggested     = pfx->if_addrs->addr;
+		rctx->ctx->bind_sa_suggested_len = pfx->if_addrs->addr_len;
 	}
-	else
-		printf("\n NOT OK!");
-		
-	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED)
-		printf("\n BIND YESSSSSS!");
-	else
-		printf("\n BIND NOOOOOOO!");
+	else if(TRACE_DETAILED_FLOW) printf("\t  BIND ALREADY PERFORMED\n");
 }
 
 void tuneForQueryCategory() { }

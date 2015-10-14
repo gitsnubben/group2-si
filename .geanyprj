@@ -1,0 +1,7 @@
+[project]
+name=si
+description=
+base_path=./
+run_cmd=
+regenerate=true
+type=All
