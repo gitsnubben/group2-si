@@ -18,6 +18,13 @@
 /* - Globals -                                                        */
 /**********************************************************************/
 
+enum priorities { 
+	HIGH_BANDWIDTH=0,       LOW_DELAY, 
+	LOW_JITTER,             ARRAY_SIZE /* MUST BE LAST */
+};
+
+int prioritiesArray[ARRAY_SIZE];
+
 #define TRACE_FLOW 1
 #define TRACE_DETAILED_FLOW 1
 
@@ -76,6 +83,11 @@ void detuneForLossSensitive();
 void detuneForLossTolerant();
 void detuneForLossResilient();
 
+void prioritizeHighBandwidth(int weight);
+void prioritizeLowDelay(int weight);
+void prioritizeLowJitter(int weight);
+
+void init_array_to_zero();
 void set_options(int intent, request_context_t *rctx);
 void fint_intents_in_ctx(struct socketopt *opts);
 void match_cat(socketopt_t *opts);
@@ -133,7 +145,6 @@ void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]
 /**********************************************************************/
 /* - Categories -                                                     */
 /**********************************************************************/
-
 void tuneForBulkCategory() {
 	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED) {
 		struct src_prefix_list *pfx = in4_enabled->data;
@@ -144,7 +155,6 @@ void tuneForBulkCategory() {
 	}
 	else if(TRACE_DETAILED_FLOW) printf("\t  BIND ALREADY PERFORMED\n");
 }
-
 void tuneForQueryCategory() { }
 void tuneForStreamCategory() { }
 void tuneForControlTrafficCategory() { }
@@ -210,21 +220,36 @@ void detuneForLossResilient() { }
 
 /**********************************************************************/
 /*                                                                    */
+/**********************************************************************/
+/* \__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\_ */
+/* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/ */
+/* \__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\_ */
+/* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/ */
+/* \__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\_ */
+/* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/ */
+/* \__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\_ */
+/* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/ */
+/**********************************************************************/
+/*                                                                    */
 /* - INTERNAL LOGIC -                                                 */
 /*                                                                    */
 /**********************************************************************/
 /**********************************************************************/
-/* - *wOOt* -                                                         */
+/* - Auxiliary -                                                      */
 /**********************************************************************/
 
 void freepolicyinfo(gpointer elem, gpointer data) {
-	/*struct src_prefix_list *spl = elem;
-
+	struct src_prefix_list *spl = elem;
 	if(spl->policy_info != NULL) {
 		free(spl->policy_info); 
-	}*/
+	}
 }
 
+/**********************************************************************/
+/*                                                                    */
+/* - MATCH AND SWITCH -                                               */
+/*                                                                    */
+/**********************************************************************/
 /**********************************************************************/
 /* - Intent match; add new intents here -                             */
 /**********************************************************************/
@@ -441,6 +466,32 @@ void fint_intents_in_ctx(struct socketopt *opts) {
 
 /**********************************************************************/
 /*                                                                    */
+/* - PRIORITIES AND RELATED -                                         */
+/*                                                                    */
+/**********************************************************************/
+/**********************************************************************/
+/* - Prioritize -                                                     */
+/**********************************************************************/
+
+void prioritizeHighBandwidth(int weight) {
+	prioritiesArray[HIGH_BANDWIDTH] += weight;
+}
+void prioritizeLowDelay(int weight) {
+	prioritiesArray[LOW_DELAY] += weight;
+}
+void prioritizeLowJitter(int weight) {
+	prioritiesArray[LOW_JITTER] += weight;
+}
+
+void init_array_to_zero() {
+	int index = 0;
+	while(index < ARRAY_SIZE) {
+		prioritiesArray[index++] = 0;
+	}
+}
+
+/**********************************************************************/
+/*                                                                    */
 /* - PUBLIC INTERFACE FOR MAM -                                       */
 /*                                                                    */
 /**********************************************************************/
@@ -491,11 +542,9 @@ int init(mam_context_t *mctx) {
 	if(TRACE_FLOW) { printf("\n\tENTERING: init() for policy_test\n"); fflush(stdout); }
 	g_slist_foreach(mctx->prefixes, &set_policy_info, NULL);
 	make_v4v6_enabled_lists (mctx->prefixes, &in4_enabled, &in6_enabled);
-	
+	init_array_to_zero()
 	g_slist_foreach(mctx->prefixes, &print_addresses, NULL);
-	
 	g_slist_foreach(in4_enabled, &print_addresses, NULL);
-	
 	if(TRACE_FLOW) { printf("\n\tLEAVING: init()\n"); fflush(stdout); }
 	return 0;
 }
