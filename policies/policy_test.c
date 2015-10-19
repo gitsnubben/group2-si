@@ -142,6 +142,9 @@ void setMaximumInitAttemptsTimeout(u_int16_t time);
 void setMaximumInboundStreams(u_int16_t instreams);
 void setDefaultContext(int context);
 void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]);
+void setBroadcast(int bool);
+void setDontRoute(int bool);
+void setKeepalive(int bool);
 
 /**********************************************************************/
 /* - Category tuning -                                                */
@@ -690,6 +693,9 @@ void set_ASCONF(int bool);                                              //SCTP_A
 void set_context(int context);                                          //SCTP_CONTEXT
 void set_shared_secret_key(u_int16_t keynumber, u_int16_t keylen,       //SCTP_AUTH_KEY
       u_int8_t key[]);
+void set_broadcast(int bool);                                           //SO_BROADCAST
+void set_dont_route(int bool);                                          //SO_DONTROUTE
+void set_keepalive(int bool);                                           //SO_KEEPALIVE
 
 /**********************************************************************/
 /* - Set mapping to IP4 -                                             */
@@ -1172,6 +1178,82 @@ void set_context(int context){
 	rctx->ctx->sockopts_suggested = new_opt;
 }
 
+/**********************************************************************/	//SO_BROADCAST
+/* - Set Broadcast flag -                                             */
+/**********************************************************************/
+
+void set_broadcast(int bool){
+	int* val = malloc(sizeof(int));
+	*val = bool;
+
+	socketopt_t* new_opt = malloc(sizeof(socketopt_t));
+	new_opt->level = SOL_SOCKET;
+	new_opt->optname = SO_BROADCAST;
+	new_opt->optval = val;
+	new_opt->optlen = sizeof(int);
+	new_opt->returnvalue = 0;
+	new_opt->flags = 0;
+	new_opt->next = rctx->ctx->sockopts_suggested;
+	
+	rctx->ctx->sockopts_suggested = new_opt;
+}
+
+/**********************************************************************/	//SO_DEBUG
+/* - Set Broadcast flag -                                             */
+/**********************************************************************/
+
+/**********************************************************************/	//SO_DONTROUTE
+/* - Set/(disable/enable routing -                                    */
+/**********************************************************************/
+
+void set_dont_route(int bool) {
+	int* val = malloc(sizeof(int));
+	*val = bool;
+
+	socketopt_t* new_opt = malloc(sizeof(socketopt_t));
+	new_opt->level = SOL_SOCKET;
+	new_opt->optname = SO_DONTROUTE;
+	new_opt->optval = val;
+	new_opt->optlen = sizeof(int);
+	new_opt->returnvalue = 0;
+	new_opt->flags = 0;
+	new_opt->next = rctx->ctx->sockopts_suggested;
+	
+	rctx->ctx->sockopts_suggested = new_opt;
+}
+
+/**********************************************************************/	//SO_KEEPALIVE
+/* - Set keepalive (enable/disable sending of keepalive messages) -   */
+/**********************************************************************/
+
+void set_keepalive(int bool) {
+	int* val = malloc(sizeof(int));
+	*val = bool;
+
+	socketopt_t* new_opt = malloc(sizeof(socketopt_t));
+	new_opt->level = SOL_SOCKET;
+	new_opt->optname = SO_KEEPALIVE;
+	new_opt->optval = val;
+	new_opt->optlen = sizeof(int);
+	new_opt->returnvalue = 0;
+	new_opt->flags = 0;
+	new_opt->next = rctx->ctx->sockopts_suggested;
+	
+	rctx->ctx->sockopts_suggested = new_opt;
+}
+
+/**********************************************************************/	//SO_MARK
+/* - Set Broadcast flag -                                             */
+/**********************************************************************/
+
+/**********************************************************************/	//SO_OOBINLINE
+/* - Set Broadcast flag -                                             */
+/**********************************************************************/
+
+/**********************************************************************/	//SO_PASSCRED
+/* - Set Broadcast flag -                                             */
+/**********************************************************************/
+
 /**********************************************************************/
 /*                                                                    */
 /* - INTERNAL INTERFACE -                                             */
@@ -1291,6 +1373,18 @@ void setDefaultContext(int context){
 
 void setSharedSecretKey(u_int16_t keynumber, u_int16_t keylength, u_int8_t key[]){
 	set_shared_secret_key(keynumber, keylength, key);
+}
+
+void setBroadcast(int bool) {
+	set_broadcast(bool);
+}
+
+void setDontRoute(int bool) {
+	set_dont_route(bool);
+}
+
+void setKeepalive(int bool) {
+	set_keepalive(bool);
 }
 /**********************************************************************/
 /*                                                                    */
