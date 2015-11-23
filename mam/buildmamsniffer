@@ -1,0 +1,2 @@
+gcc -o mam_sniffer mam_sniffer.c mam_addr_manager.c header_parser.c -lrt
+sudo ./mam_sniffer

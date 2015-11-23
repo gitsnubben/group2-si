@@ -1,0 +1,4 @@
+gcc -c -Wall mam_addr_manager.c
+gcc -c -Wall test_sm.c
+gcc -o in test_sm.c mam_addr_manager.c -lrt
+./in

@@ -82,7 +82,6 @@ int muacc_getaddrinfo(muacc_context_t *ctx,
 		const char *hostname, const char *servname,
 		const struct addrinfo *hints, struct addrinfo **res)
 {
-
 	int ret;
 
 	DLOG(CLIB_IF_NOISY_DEBUG2, "invoked\n");
@@ -450,12 +449,20 @@ int muacc_connect(muacc_context_t *ctx,
 
 	/* unlock context and do request */
 	_unlock_ctx(ctx);
+	
+	///THIS WILL GIVE YOU THE IP_ADDRESSES
+	/*struct sockaddr_in* rcv_addr = (struct sockaddr_in*) address;
+	struct sockaddr_in* snd_addr = (struct sockaddr_in*) ctx->ctx->bind_sa_suggested;
+	char rcv[30], snd[30];
+	inet_ntop(AF_INET, &(rcv_addr->sin_addr), rcv, 30);
+	inet_ntop(AF_INET, &(snd_addr->sin_addr), snd, 30);
+	printf("\nrcv_addr: %s\nsnd_addr: %s", rcv, snd);*/
 
 	return connect(socket, ctx->ctx->remote_sa, ctx->ctx->remote_sa_len);
 
 
 muacc_connect_fallback:
-
+	
 	return connect(socket, address, address_len);
 
 }
