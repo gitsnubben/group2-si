@@ -33,3 +33,5 @@ void set_ip_header_size  (int size);
 unsigned int parse_number_from_char(char* c, int lsb, int msb);
 header_field get_ipv4_ihl      (pkt_ptr pkt);
 header_field get_ipv4_snd_addr (pkt_ptr pkt);
+header_field get_ipv4_rcv_addr (pkt_ptr pkt);
+unsigned int get_num_tcp_seq_nr    (pkt_ptr pkt);

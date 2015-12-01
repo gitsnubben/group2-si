@@ -82,11 +82,11 @@ void print_packet_list(packet_list* pkts)
 	char rcv_ipv4[20];
 	packet_list* item = pkts;
 	printf("\n===================================================================");
-	printf("\n%24s%24s%24s", "snd_addr", "rcv_addr", "time_stamp");
+	printf("\n%24s%24s%24s%24s", "snd_addr", "rcv_addr", "seq nr", "time_stamp");
 	printf("\n===================================================================");
 	while (item != NULL) 
 	{
-		printf("\n%24s%24s%24lld", make_ipv4_readable(snd_ipv4, item->pkt.snd_addr), make_ipv4_readable(rcv_ipv4, item->pkt.rcv_addr), item->time_stamp);
+		printf("\n%24s%24s%24d%24lld", make_ipv4_readable(snd_ipv4, item->pkt.snd_addr), make_ipv4_readable(rcv_ipv4, item->pkt.rcv_addr), item->pkt.seq_nr, item->time_stamp);
 		item = item->next;
 	}
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: print_packet_list"); }
@@ -258,10 +258,12 @@ void gather_data()
         set_ip_header_size(parse_number_from_char(&get_ipv4_ihl(ppkt).field_data[0], 0, 3)*4);
         
         //TCP
-        //memcpy(pkt->pkt.snd_addr, &get_ipv4_snd_addr(ppkt).field_data[0], LARGEST_KNOWN_FIELD);
+        memcpy(pkt->pkt.snd_addr, &get_ipv4_snd_addr(ppkt).field_data[0], LARGEST_KNOWN_FIELD);
+        memcpy(pkt->pkt.rcv_addr, &get_ipv4_rcv_addr(ppkt).field_data[0], LARGEST_KNOWN_FIELD);
+        pkt->pkt.seq_nr = get_num_tcp_seq_nr(ppkt);
         
         //SCPT
-        pkt->pkt = get_packet_info(ppkt);
+        //pkt->pkt = get_packet_info(ppkt);
         
         /*char test[4];
         test[0]= 10;
@@ -286,7 +288,7 @@ void gather_data()
 	    if (pair != NULL)
 	    {
 			add_packet_to_list(pkt, pair);
-			set_new_srtt(pair);
+			//set_new_srtt(pair);
 		}
 		//print_list();	
 	    print_pair_list();
