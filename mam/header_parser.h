@@ -1,6 +1,13 @@
 #define LARGEST_KNOWN_FIELD 20
 #define PACKET_LIMIT 65536
 
+#define CHUNK_DATA 0
+#define CHUNK_SACK 3
+#define TCP_DATA 0
+#define TCP_ACK 1
+#define L4_PROT_TCP 6
+#define L4_PROT_SCTP 132
+
 struct packet {
 	char* packet_data;
 	unsigned int packet_size;
@@ -13,25 +20,34 @@ typedef struct header_field {
 	int field_size;
 } header_field; 
 
-typedef struct packet_info {
-	char snd_addr[LARGEST_KNOWN_FIELD];
-	char rcv_addr[LARGEST_KNOWN_FIELD];
-	unsigned short int snd_port;
-	unsigned short int rcv_port;
-	unsigned int seq_nr;
+typedef struct chunk_info {
+	unsigned short int layer4_type;     //Parsed in gather_tcp_header_info() or gather_sctp_chunk_header_info()
+	unsigned int seq_nr;                //Parsed in gather_tcp_header_info() or gather_sctp_chunk_header_info()
+	unsigned int ack_nr;                //Parsed in gather_tcp_header_info() or gather_sctp_chunk_header_info()
 	unsigned int packet_size;
-	int is_ack;
+	unsigned int retain_diff;
+	struct chunk_info* next_chunk;
+} chunk_info;
+
+typedef struct packet_info {
+	unsigned short int ip_version;      //Parsed in gather_L3_header_info()
+	char snd_addr[LARGEST_KNOWN_FIELD]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	char rcv_addr[LARGEST_KNOWN_FIELD]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	unsigned short int ip_addr_size;    //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	unsigned short int layer4_prot;     //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info() 
+	unsigned short int snd_port;        //Parsed in gather_tcp_header_info() or gather_sctp_header_info()
+	unsigned short int rcv_port;        //Parsed in gather_tcp_header_info() or gather_sctp_header_info()
+	struct chunk_info* chunk;
 } packet_info;
 
-header_field get_snd_addr(pkt_ptr pkt_arr);
-header_field get_rcv_addr(pkt_ptr pkt_arr);
-packet_info get_packet_info(pkt_ptr pkt_arr);
-//char* make_ip_readable(char* redable, char* addr, int size);
-char* make_ipv4_readable(char* readable_addr, char* addr);
+typedef struct packet_info* packet_info_ptr;
+typedef struct chunk_info* chunk_info_ptr;
 
-void set_ip_header_size  (int size);
-unsigned int parse_number_from_char(char* c, int lsb, int msb);
-header_field get_ipv4_ihl      (pkt_ptr pkt);
-header_field get_ipv4_snd_addr (pkt_ptr pkt);
-header_field get_ipv4_rcv_addr (pkt_ptr pkt);
-unsigned int get_num_tcp_seq_nr    (pkt_ptr pkt);
+packet_info  get_packet_info         (pkt_ptr pkt_arr);
+char*        make_ip_readable        (char* redable, char* addr, int size); // does this one even exist?
+char*        make_port_readable      (char* readable_port, char* port);
+void         print_raw               (char* string, int limit);
+pkt_ptr      make_packet_from_string (char* string, int limit);
+void         print_packet_info       (packet_info_ptr info);
+
+char* make_ipv4_readable(char* readable_addr, char* addr);

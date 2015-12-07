@@ -6,13 +6,14 @@
 #include <unistd.h>
 #include "header_parser.h"
 
-
 #define DAEMONIZE 0            //If daemonize, then no trace (log trace ?)
 #define TRACE_FLOW 0           //Only trace if no daemonize
+#define TRACE_PARSE 0          //Only trace if no daemonize
 #define TRACE_DETAILS 0        //Only trace if no daemonize
 #define TRACE_ERROR 1          //Only trace if no daemonize
 #define RUN_DIAGNOSTICS 0      //Will run diagnostics, normally keep off
 #define TRACE_MATCH 1          //Will confirm successful diagnostics
+#define TRACE_TESTS 1          //Will print current test
 #define TEST_INTERNALS 0       //Will test private functions
 #define TEST_EXTERNALS 1       //Will test public functions
 
@@ -33,17 +34,25 @@ void log_trace(char* message) { printf("\n  %s", message); fflush(stdout); } // 
 /* - Header constants & variables -                                   */
 /**********************************************************************/
 
+const int PROT_IPV4 = 4;
+const int PROT_IPV6 = 6;
+const int PROT_TCP  = 6;
+const int PROT_SCTP = 132;
+
+const int SCTP_DATA_CHUNK = 0;
+const int SCTP_SACK_CHUNK = 3;
+
 int LATEST_IP_HEADER_SIZE = 20;
 
 //Ethernet header size, plus offsets to fields
 const int ETH_HEADER = 14;
 
 //IP header size, may vary, found at IPV4_LENGHT_OFFSET, or constant 40 if IPv6
-/***/ int IP_HEADER = 20;                                              
+/***/ int IP_HEADER = 0;                                              
 const int IP_VERSION_OFFSET = 0;      const int IP_VERSION_SIZE = 1;
 
 //IPV4 header size, plus offsets to fields
-const int IPV4_HEADER_OPT = 24; 
+const int IPV4_HEADER = 24; 
 const int IPV4_IHL_OFFSET = 0;        const int IPV4_IHL_SIZE = 1;  
 const int IPV4_LENGTH_OFFSET = 2;     const int IPV4_LENGTH_SIZE = 2; 
 const int IPV4_PROT_OFFSET = 9;       const int IPV4_PROT_SIZE = 1;       
@@ -51,7 +60,7 @@ const int IPV4_SND_ADDR_OFFSET = 12;  const int IPV4_SND_ADDR_SIZE = 4;
 const int IPV4_RCV_ADDR_OFFSET = 16;  const int IPV4_RCV_ADDR_SIZE = 4;
 
 //IPV6 header size, plus offsets to fields
-const int IPV6_HEADER_OPT = 40; 
+const int IPV6_HEADER = 40; 
 const int IPV6_VERSION_OFFSET = 0;    const int IPV6_VERSION_SIZE = 1;
 const int IPV6_LENGTH_OFFSET = 4;     const int IPV6_LENGTH_SIZE = 2;
 const int IPV6_PROT_OFFSET = 6;       const int IPV6_PROT_SIZE = 1;
@@ -88,13 +97,15 @@ const int IP_IHL_LN_BIT = 4;
 /* - Ottsets and sizes for fields of interest -                       */
 /**********************************************************************/
 
-int  ip_end          () { return ETH_HEADER + IP_HEADER;                   }
-int  sctp_jump       () { return ETH_HEADER + IP_HEADER + SCTP_CHUNK_JUMP; }
-int  get_ipv6_header () { return IPV6_HEADER_OPT;                          }
+int pad_if_needed (int size) { return (4 - (size + 2)%4 == 4) ? size : (size + 4 - size%4); }
 
-void set_ip_header_size  (int size) { IP_HEADER = size;       }
-void set_tcp_header_size (int size) { TCP_HEADER  = size;     }
-void set_sctp_chunk_jump (int size) { SCTP_CHUNK_JUMP = size; }
+int  ip_end               () { return ETH_HEADER + IP_HEADER;                }
+int  sctp_jump            () { return SCTP_CHUNK_JUMP;                       }
+int  get_ipv6_header_size () { return IPV6_HEADER;                           }
+
+void set_ip_header_size  (int size) { IP_HEADER = size;                      }
+void set_tcp_header_size (int size) { TCP_HEADER  = size;                    }
+void set_sctp_chunk_jump (int size) { SCTP_CHUNK_JUMP = pad_if_needed(size); }
 
 int st_ip_version()    { return ETH_HEADER + IP_VERSION_OFFSET;    }    int ln_ip_version()    { return IP_VERSION_SIZE;    } 
 
@@ -257,8 +268,7 @@ unsigned int parse_number_from_single_char(char c, int lsb, int msb)
 	unsigned int number = 0, weight = 1, mask = get_pos_weight(lsb);
 	while(lsb++ <= msb)													//WHILE HÄR
 	{
-		if((c & mask) == mask) { number += weight; /*printf("1");*/ }
-		//else printf("0");
+		if((c & mask) == mask) { number += weight; }
 		mask *= 2;
 		weight *= 2;
 	}
@@ -272,11 +282,9 @@ unsigned int parse_number_from_char(char* c, int lsb, int msb)
 	unsigned int number = 0, char_count = 0;
 	while(msb >= 0)
 	{
-		//printf("\n  START: %u  LSB: %d  MSB: %d  ", number, lsb, msb);
 		number += parse_number_from_single_char(c[char_count++], lsb, truncate_to(msb, 7));
 		msb -= 8;
 		lsb = 0;
-		//printf("\n  Number: %u  LSB: %d  MSB: %d  ", number, lsb, msb);
 		if(msb >= 7) { number *= get_pos_weight(8); }
 	}
 	if(TRACE_FLOW) { log_trace("LEAVING: parse_number_from_char"); }
@@ -349,7 +357,7 @@ unsigned int get_num_ipv6_prot     (pkt_ptr pkt)  { return parse_number_from_cha
 unsigned int get_num_ipv6_snd_addr (pkt_ptr pkt)  { return parse_number_from_char(&get_ipv6_snd_addr(pkt).field_data[0], 0, 127); } 
 unsigned int get_num_ipv6_rcv_addr (pkt_ptr pkt)  { return parse_number_from_char(&get_ipv6_rcv_addr(pkt).field_data[0], 0, 127); } 
 
-unsigned int get_num_sctp_length   (pkt_ptr pkt)  { return parse_number_from_char(&get_sctp_length(pkt).field_data[0],   0, 31 ); }
+unsigned int get_num_sctp_length   (pkt_ptr pkt)  { return parse_number_from_char(&get_sctp_length(pkt).field_data[0],   0, 7  ); }
 unsigned int get_num_sctp_type     (pkt_ptr pkt)  { return parse_number_from_char(&get_sctp_type(pkt).field_data[0],     0, 7  ); }
 unsigned int get_num_sctp_tsn      (pkt_ptr pkt)  { return parse_number_from_char(&get_sctp_tsn(pkt).field_data[0],      0, 31 ); } 
 unsigned int get_num_sctp_snd_port (pkt_ptr pkt)  { return parse_number_from_char(&get_sctp_snd_port(pkt).field_data[0], 0, 15 ); }
@@ -366,18 +374,12 @@ unsigned int get_num_tcp_is_ack    (pkt_ptr pkt)  { return parse_number_from_cha
 /* - SCTP chunk handling-                                             */
 /**********************************************************************/
 
-int get_next_sctp_chunk(pkt_ptr pkt)
-{
-	int jump = sctp_jump();
-	set_sctp_chunk_jump(jump + get_num_sctp_length(pkt));
-	return jump;
-}
+void reset_to_first_chunk() { set_sctp_chunk_jump(ip_end() + SCTP_COMMON_HEADER); }
 
-int get_next_sctp_data_chunk(pkt_ptr pkt)
+void get_next_sctp_data_chunk(pkt_ptr pkt)
 {	
-	int get_next_i = get_next_sctp_chunk(pkt);
-	while(get_num_sctp_type(pkt) != 0){ get_next_i = get_next_sctp_chunk(pkt); }		//WHILE HÄR
-	return get_next_i;
+	if(get_num_sctp_length(pkt) == 0) { set_sctp_chunk_jump(pkt->packet_size + 100); }
+	set_sctp_chunk_jump(get_num_sctp_length(pkt) + SCTP_CHUNK_JUMP);
 }
 
 /**********************************************************************/
@@ -393,46 +395,144 @@ int get_next_sctp_data_chunk(pkt_ptr pkt)
 /* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/ */
 /**********************************************************************/
 /*                                                                    */
+/* - AUXILIARY TO MAIN PARSE -                                        */
+/*                                                                    */
+/**********************************************************************/
+/**********************************************************************/
+/* - Protocol specific layer 2 parsing -                              */
+/**********************************************************************/
+
+/**********************************************************************/
+/* - Protocol specific layer 3 parsing -                              */
+/**********************************************************************/
+
+void gather_ipv4_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv4_header"); }     
+	set_ip_header_size(get_num_ipv4_ihl(pkt));
+	memcpy(info->snd_addr, &get_ipv4_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 snd address
+	memcpy(info->rcv_addr, &get_ipv4_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 rcv address
+	info->layer4_prot = get_num_ipv4_prot(pkt);                         //Adding layer 4 protocol
+	info->ip_addr_size = 4;                                             //Adding layer 3 address size
+	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv4_header");  }    
+}
+
+void gather_ipv6_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv6_header"); } 
+	set_ip_header_size(get_ipv6_header_size());   
+	memcpy(info->snd_addr, &get_ipv6_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 snd address
+	memcpy(info->rcv_addr, &get_ipv6_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 rcv address
+	info->layer4_prot = get_num_ipv6_prot(pkt);                                         //Adding layer 4 protocol
+	info->ip_addr_size = 16;                                                            //Adding layer 3 address size
+	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv6_header");  }  	      
+}
+
+/**********************************************************************/
+/* - Protocol specific layer 4 parsing -                              */
+/**********************************************************************/
+
+void gather_tcp_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	if(TRACE_PARSE)       { log_trace("ENTERING: gather_tcp_header_info"); } 
+	info->chunk = malloc(sizeof(chunk_info));
+	info->snd_port           = get_num_tcp_snd_port(pkt);                                //Adding snd port        
+	info->rcv_port           = get_num_tcp_rcv_port(pkt);                                //Adding rcv port          
+	info->chunk->layer4_type = get_num_tcp_is_ack(pkt);                                  //Adding is ack
+	info->chunk->seq_nr      = get_num_tcp_seq_nr(pkt);                                  //Adding seq nr
+	if(info->chunk->layer4_type) { info->chunk->ack_nr = get_num_tcp_ack_nr(pkt); }      //Adding ack nr if packet is ack
+	if(TRACE_PARSE)       { log_trace("LEAVING: gather_tcp_header_info");  }  	
+}
+
+chunk_info_ptr gather_sctp_chunk_header_info(pkt_ptr pkt)
+{
+	if(TRACE_PARSE)       { log_trace("ENTERING: gather_sctp_chunk_header_info"); } 
+	chunk_info_ptr chunk = malloc(sizeof(chunk_info));
+	chunk->layer4_type   = get_num_sctp_type(pkt);
+	chunk->seq_nr        = get_num_sctp_tsn(pkt);
+	chunk->ack_nr        = get_num_sctp_tsn(pkt);
+	chunk->packet_size   = get_num_sctp_length(pkt);
+	chunk->retain_diff   = 0;
+	if(TRACE_PARSE)       { log_trace("LEAVING: gather_sctp_chunk_header_info");  }
+	return chunk;
+}
+
+void gather_sctp_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	if(TRACE_PARSE)       { log_trace("ENTERING: gather_sctp_header_info"); } 
+	chunk_info_ptr old_head;
+	info->snd_port    = get_num_sctp_snd_port(pkt);                     //Adding snd port 
+	info->rcv_port    = get_num_sctp_rcv_port(pkt);                     //Adding rcv port 
+	reset_to_first_chunk(); 
+	do { 
+		old_head = info->chunk;                             //Saving head as old_head
+		info->chunk = gather_sctp_chunk_header_info(pkt);   //Getting new head
+		info->chunk->next_chunk = old_head;                 //Old head placed as tail of new head
+		get_next_sctp_data_chunk(pkt); 
+	} while(SCTP_CHUNK_JUMP < pkt->packet_size);
+	if(TRACE_PARSE)       { log_trace("LEAVING: gather_sctp_header_info");  }  	
+}
+
+/**********************************************************************/
+/* - Layer parsing -                                                  */
+/**********************************************************************/
+
+void gather_L2_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	
+}
+
+void gather_L3_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	info->ip_version = get_num_ip_version(pkt);                         //Adding IP version
+	
+	if      (info->ip_version == PROT_IPV4) { gather_ipv4_header_info(pkt, info); }
+	else if (info->ip_version == PROT_IPV6) { gather_ipv6_header_info(pkt, info); }
+	else                                    { info->ip_version = 0;               }
+}
+
+void gather_L4_header_info(pkt_ptr pkt, packet_info_ptr info)
+{
+	if      (info->layer4_prot == PROT_TCP ) { gather_tcp_header_info(pkt, info);  }
+	else if (info->layer4_prot == PROT_SCTP) { gather_sctp_header_info(pkt, info); }
+	else                                     { info->layer4_prot = 0;              }
+}
+
+packet_info packet_info_init()
+{
+	packet_info info;
+	memset(info.snd_addr, 0, LARGEST_KNOWN_FIELD);
+	memset(info.rcv_addr, 0, LARGEST_KNOWN_FIELD);
+	info.ip_version = 0;     info.ip_addr_size = 0;
+	info.layer4_prot = 0;    info.snd_port = 0;
+	info.rcv_port = 0;       info.chunk = NULL;
+	return info;
+}
+
+/**********************************************************************/
+/*                                                                    */
 /* - PUBLIC INTERFACE -                                               */
 /*                                                                    */
 /**********************************************************************/
 /**********************************************************************/
-/* - Auxiliary to public interface -                                  */
+/* - Main parse function -                                            */
 /**********************************************************************/
 
-packet_info gather_data_from_eth_ipv4_sctp_header(pkt_ptr pkt, packet_info info)
+packet_info get_packet_info(pkt_ptr pkt)
 {
-		if(TRACE_FLOW) { log_trace("ENTERING: gather_data_from_eth_ipv4_sctp_header"); }     
-		unsigned int ihl = get_num_ipv4_ihl(pkt);
-		set_ip_header_size(ihl);
-	    memcpy(info.snd_addr, &get_ipv4_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD);
-	    memcpy(info.rcv_addr, &get_ipv4_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD);
-	    info.snd_port = get_num_sctp_snd_port(pkt);
-	    info.rcv_port = get_num_sctp_rcv_port(pkt);
-	    //seq
-	    //ack
-	    //size
-	    if(TRACE_FLOW) { log_trace("LEAVING: gather_data_from_eth_ipv4_sctp_header"); }    
-	    return info;
-}
-
-packet_info gather_data_from_eth_ipv6_sctp_header(pkt_ptr pkt, packet_info info)
-{
-		if(TRACE_FLOW) { log_trace("ENTERING: gather_data_from_eth_ipv6_sctp_header"); } 
-		set_ip_header_size(get_ipv6_header());   
-	    memcpy(info.snd_addr, &get_ipv6_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD);
-	    memcpy(info.rcv_addr, &get_ipv6_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD);
-	    info.snd_port = get_num_sctp_snd_port(pkt);
-	    info.rcv_port = get_num_sctp_rcv_port(pkt);
-	    //seq
-	    //ack
-	    //size   
-	    if(TRACE_FLOW) { log_trace("LEAVING: gather_data_from_eth_ipv6_sctp_header"); }  
-	    return info;	      
+	if(TRACE_FLOW) { log_trace("ENTERING: get_packet_info"); }
+	packet_info info = packet_info_init();
+	
+	gather_L2_header_info(pkt, &info); //Gathers nothing for now
+	gather_L3_header_info(pkt, &info); //Must parse IP-version and IHL before L4; gathers IP version, L3 addresses, and L4 protocol
+	gather_L4_header_info(pkt, &info); //Layer 3 must have been parsed prior to cal; gathers L4 ports, seq and ack numbers & ack status
+	
+	if(TRACE_FLOW) { log_trace("LEAVING: get_packet_info"); }
+	return info;
 }
 
 /**********************************************************************/
-/* - Public interface -                                               */
+/* - Other public functions -                                         */
 /**********************************************************************/
 
 void print_raw(char* string, int limit)
@@ -473,17 +573,6 @@ header_field get_rcv_addr(pkt_ptr pkt)
 	return get_undef_field();
 }
 
-packet_info get_packet_info(pkt_ptr pkt)
-{
-	if(TRACE_FLOW) { log_trace("ENTERING: get_packet_info"); }
-	unsigned int ip_version = get_num_ip_version(pkt);
-	packet_info info;
-	if      (ip_version == 4) { info = gather_data_from_eth_ipv4_sctp_header(pkt, info); }
-	else if (ip_version == 6) { info = gather_data_from_eth_ipv6_sctp_header(pkt, info); }
-	if(TRACE_FLOW) { log_trace("LEAVING: get_packet_info"); }
-	return info;
-}
-
 char* make_port_readable(char* readable_port, char* port)
 {
 	sprintf(readable_port, "%u", parse_number_from_char(port, 0, 15));
@@ -514,7 +603,38 @@ char* make_ipv6_readable(char* readable_addr, char* addr)
 	return readable_addr;
 }
 
-int main() { run_diagnostics(); return 0; }
+/**********************************************************************/
+/* - Print function -                                                 */
+/**********************************************************************/
+
+void print_std_line() { printf("\n  ======================================"); }
+
+void print_chunk_info(chunk_info_ptr chunk)
+{
+	print_std_line();
+	printf("\n  LAYER4 TYPE: %u", chunk->layer4_type);						printf("\n  SEQ NR: %u",      chunk->seq_nr);
+	printf("\n  ACK NR: %u",      chunk->ack_nr);							printf("\n  PACKET SIZE: %u", chunk->packet_size);
+	printf("\n  RETAIN DIFF: %u", chunk->retain_diff);						
+}
+
+void print_packet_info(packet_info_ptr info)
+{
+	print_std_line();
+	printf("\n  PACKET:");
+	print_std_line();
+	char c[LARGEST_KNOWN_FIELD];
+	chunk_info_ptr probe = info->chunk;
+	printf("\n  IP VERSION: %u",  info->ip_version);						printf("\n  SND ADDR: %s", make_ipv4_readable(c, info->snd_addr));
+	printf("\n  RCV ADDR: %s",    make_ipv4_readable(c, info->rcv_addr));	printf("\n  IP ADDR SIZE: %u", info->ip_addr_size);
+	printf("\n  LAYER4 PROT: %u", info->layer4_prot);						printf("\n  SND PORT: %u", info->snd_port);
+	printf("\n  RCV PORT: %u",    info->rcv_port);
+	while(probe != NULL) { print_chunk_info(probe); probe = probe->next_chunk; }
+	print_std_line();
+	printf("\n  END OF PACKET");
+	print_std_line();
+}
+
+//int main() { run_diagnostics(); return 0; }
 
 /**********************************************************************/
 /* - End -                                                            */
@@ -543,59 +663,6 @@ int main() { run_diagnostics(); return 0; }
 #define PROGRAM_END '\0'
 
 int outcome = 1;
-int global_index = 0;
-
-void read_from_file_into_buffer(char* buffer, char* filename, int limit) 
-{
-	FILE* file = fopen(filename, "r");
-	if(file == NULL) { printf("VM: Error opening file %s!\n", filename); }
-	int index = 0;
-	do {	
-		buffer[index] = fgetc(file);
-	} while (buffer[index++] != EOF && index < limit); 
-	buffer[--index] = PROGRAM_END;
-	fclose(file);
-}
-
-int get_number(char* header, char* return_buffer) 
-{  
-	int local_index = 0;
-	while(isspace(header[global_index])) { global_index++; }  // Removes white space in the program string.
-	if(isdigit(header[global_index])) 					      
-	{
-		while(isdigit(header[global_index])) { return_buffer[local_index++] = header[global_index++]; }	
-		return 1;
-	}	
-	if(header[global_index++] == '-') 					      
-	{
-		while(isdigit(header[global_index])) { return_buffer[local_index++] = header[global_index++]; }	
-		return -1;
-	}
-	return 0;
-}
-
-int convert_string_to_number(char* number)
-{
-	int ret = number[0] - 48, i = 1;
-	while(isdigit(number[i])) { ret *= 10; ret += number[i++] - 48; }
-	return ret;
-}
-
-void load_header_from_file(char* filename, char* return_header)
-{
-	char actual_header[HEADER_LIMIT], number[3];
-	int i = 0; global_index = 0;
-	read_from_file_into_buffer(actual_header, filename, HEADER_LIMIT);
-	memset(number, 0, 3);
-	int status = get_number(actual_header, number);
-	while(status == 1 || status == -1)
-	{
-		if(status == 1) { return_header[i++] =  convert_string_to_number(number); }
-		else            { return_header[i++] = -convert_string_to_number(number); }
-		memset(number, 0, 3);
-		status = get_number(actual_header, number);
-	}
-}
 
 void add_word_to_packet(char* word, pkt_ptr pkt)
 {
@@ -691,7 +758,7 @@ void setup_sctp_heartbeat_chunk(pkt_ptr pkt)
 // CHAR 252 = 11111100 Useful split, 75/25
 void split_bytes_for_eth_ipv4_sctp_mock_header1(pkt_ptr pkt)
 {
-	pkt->packet_data[ETH_HEADER + 0] = 117 ; //Since this byte is split 50/50, see IPv4 header
+	pkt->packet_data[ETH_HEADER + 0] = 117; //Since this byte is split 50/50, see IPv4 header
 	pkt->packet_data[ETH_HEADER + 1] = 252; //Since this byte is split 75/25, see IPv4 header
 	pkt->packet_data[ETH_HEADER + 6] = 192; //Since this byte is split 25/75, see IPv4 header
 	pkt->packet_data[ip_end() + SCTP_COMMON_HEADER] = '\0';     //Chunk type
@@ -852,20 +919,9 @@ void test_get_ipv4v6_addr(header_field res, char* exp1, int exp2)
 /* - Make Readable -                                                  */
 /**********************************************************************/
 
-void test_make_port_readable(header_field f, char* exp)
-{
-	char res[2]; strcpy(res,  make_port_readable(res, f.field_data));
-	if      (strcmp(res, exp) != 0) { printf("\n  ERROR: got %s, expected %s!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH          ) { printf("\n  MATCH: got %s, expected %s", res, exp);               }
-}
-
-void test_make_snd_port_readable (pkt_ptr pkt, char* exp)   { test_make_port_readable(get_sctp_snd_port(pkt), exp); }
-void test_make_rcv_port_readable (pkt_ptr pkt, char* exp)   { test_make_port_readable(get_sctp_rcv_port(pkt), exp); }
-
 void test_make_ipv4_readable(header_field f, char* exp)
 {
 	char res[100]; make_ipv4_readable(res, f.field_data);
-	
 	if      (strcmp(res, exp) != 0) { printf("\n  ERROR: got IP %s, expected %s!", res, exp); outcome = 0; }
 	else if (TRACE_MATCH          ) { printf("\n  MATCH: got IP %s, expected %s", res, exp);               }
 }
@@ -884,73 +940,24 @@ void test_make_ipv4_rcv_addr_readable(pkt_ptr pkt, char* exp) { test_make_ipv4_r
 /* - Get numerical values -                                           */
 /**********************************************************************/
 
-void test_get_num_tcp_is_ack(pkt_ptr pkt, int exp)
+void determine_and_print_result_i(u_int exp, u_int res, char* sem)
 {
-	int res = get_num_tcp_is_ack(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got seq %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got seq %d, expected %d", res, exp);               }		
+	if      (exp !=  res) { printf("\n  ERROR: got %s %u, expected %u!", sem, res, exp); outcome = 0; }
+	else if (TRACE_MATCH) { printf("\n  MATCH: got %s %u, expected %u",  sem, res, exp);              }	
 }
 
-void test_get_num_tcp_seq_nr(pkt_ptr pkt, int exp)
-{
-	int res = get_num_tcp_seq_nr(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got seq %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got seq %d, expected %d", res, exp);               }		
-}
-
-void test_get_port(int res, int exp)
-{
-	if      (res != exp ) { printf("\n  ERROR: got port %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got port %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_ip_version(pkt_ptr pkt, int exp)
-{
-	int res = get_num_ip_version(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got IP version %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got IP version %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_ipv4_ihl(pkt_ptr pkt, int exp) 
-{
-	int res = get_num_ipv4_ihl(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got IHL %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got IHL %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_tcp_ack_nr(pkt_ptr pkt, int exp)
-{
-	int res = get_num_tcp_ack_nr(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got ack nr %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got ack nr %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_ipv4_length(pkt_ptr pkt, int exp) 
-{
-	int res = get_num_ipv4_length(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got payload length %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got payload length %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_ipv4_prot(pkt_ptr pkt, int exp) 
-{
-	int res = get_num_ipv4_prot(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got network protocol %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got network protocol %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_ipv6_prot(pkt_ptr pkt, int exp) 
-{
-	int res = get_num_ipv6_prot(pkt);
-	if      (res != exp ) { printf("\n  ERROR: got network protocol %d, expected %d!", res, exp); outcome = 0; }
-	else if (TRACE_MATCH) { printf("\n  MATCH: got network protocol %d, expected %d", res, exp);               }	
-}
-
-void test_get_num_tcp_snd_port  (pkt_ptr pkt, int exp)   { test_get_port(get_num_tcp_snd_port(pkt),  exp); }
-void test_get_num_tcp_rcv_port  (pkt_ptr pkt, int exp)   { test_get_port(get_num_tcp_rcv_port(pkt),  exp); }
-
-void test_get_num_sctp_snd_port (pkt_ptr pkt, int exp)   { test_get_port(get_num_sctp_snd_port(pkt), exp); }
-void test_get_num_sctp_rcv_port (pkt_ptr pkt, int exp)   { test_get_port(get_num_sctp_rcv_port(pkt), exp); }
+void test_get_num_tcp_is_ack    (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_tcp_is_ack(pkt),    "is ack");         }
+void test_get_num_tcp_seq_nr    (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_tcp_seq_nr(pkt),    "seq nr");         }
+void test_get_num_ip_version    (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_ip_version(pkt),    "IP version");     }
+void test_get_num_ipv4_ihl      (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_ipv4_ihl(pkt),      "IHL");            }
+void test_get_num_tcp_ack_nr    (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_tcp_ack_nr(pkt),    "ACK nr");         }
+void test_get_num_ipv4_length   (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_ipv4_length(pkt),   "payload length"); }
+void test_get_num_ipv4_prot     (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_ipv4_prot(pkt),     "L4 protocol");    }
+void test_get_num_ipv6_prot     (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_ipv6_prot(pkt),     "L4 protocol");    }
+void test_get_num_tcp_snd_port  (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_tcp_snd_port(pkt),  "snd port");       }
+void test_get_num_tcp_rcv_port  (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_tcp_rcv_port(pkt),  "rcv port");       }
+void test_get_num_sctp_snd_port (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_sctp_snd_port(pkt), "snd port");       }
+void test_get_num_sctp_rcv_port (pkt_ptr pkt, u_int exp) { determine_and_print_result_i(exp, get_num_sctp_rcv_port(pkt), "rcv port");       }
 
 void test_get_all_num_tcp_fields (pkt_ptr pkt, int snd_port, int rcv_port, int seq, int is_ack, int ack_nr)
 {
@@ -969,7 +976,7 @@ void test_get_all_num_sctp_fields (pkt_ptr pkt, int snd_port, int rcv_port, int 
 	//ACK!
 }
 
-void test_parse_ipv4_packet(pkt_ptr pkt, int version, int ihl, int ip_payload, int nw_prot, char* snd_ip, char* rcv_ip, int snd_port, int rcv_port, int seq, int is_ack, int ack_nr) //Packet, V, IHL, TL, P, SND_IP, RCV_IP, SND_PORT, RCV_PORT 
+void test_parse_ipv4_packet(pkt_ptr pkt, u_int version, u_int ihl, u_int ip_payload, u_int nw_prot, char* snd_ip, char* rcv_ip, u_int snd_port, u_int rcv_port, u_int seq, u_int is_ack, u_int ack_nr) //Packet, V, IHL, TL, P, SND_IP, RCV_IP, SND_PORT, RCV_PORT 
 {
 	test_get_num_ip_version(pkt, version);                              //IPv4 = 4, IPv6 = 6
 	if(get_num_ip_version(pkt) == 4)
@@ -986,7 +993,7 @@ void test_parse_ipv4_packet(pkt_ptr pkt, int version, int ihl, int ip_payload, i
 	if(get_num_ip_version(pkt) == 6)
 	{
 		test_get_num_ipv6_prot(pkt, nw_prot);
-		set_ip_header_size(IPV6_HEADER_OPT);
+		set_ip_header_size(IPV6_HEADER);
 		if(get_num_ipv6_prot(pkt) == 6)   { test_get_all_num_tcp_fields (pkt, snd_port, rcv_port, seq, is_ack, ack_nr); }
 		if(get_num_ipv6_prot(pkt) == 132) { test_get_all_num_sctp_fields(pkt, snd_port, rcv_port, seq, is_ack);         }	
 	}
@@ -1003,7 +1010,7 @@ void test_get_packet_info(pkt_ptr pkt)
 	}
 	else if(get_num_ip_version(pkt) == 6)
 	{
-		set_ip_header_size(IPV6_HEADER_OPT);
+		set_ip_header_size(IPV6_HEADER);
 		printf("\n  CONVERTED: %s -> %s", &get_ipv6_snd_addr(pkt).field_data[0], new.snd_addr);
 		printf("\n  CONVERTED: %s -> %s", &get_ipv6_rcv_addr(pkt).field_data[0], new.rcv_addr);
 	}
@@ -1033,7 +1040,7 @@ void run_internal_diagnostics()
 	if(TRACE_MATCH) { print_header(eth_ipv4_packet1, "PRINTING: header with eth & IPv4"); }
 	if(TRACE_MATCH) { print_header(eth_ipv6_packet1, "PRINTING: header with eth & IPv6"); }
 	
-	if(TRACE_FLOW) { log_trace("TESTING: number from part of char"); }
+	if(TRACE_TESTS) { log_trace("TESTING: number from part of char"); }
 	
 	test_parse_number_from_char(127, 0, 3, 15);
 	test_parse_number_from_char(127, 1, 4, 15);
@@ -1047,7 +1054,7 @@ void run_internal_diagnostics()
 	test_parse_number_from_char(51,  3, 6, 6 );
 	test_parse_number_from_char(51,  4, 7, 3 );
 	
-	if(TRACE_FLOW) { log_trace("TESTING: fields in header with eth & IPv4"); }
+	if(TRACE_TESTS) { log_trace("TESTING: fields in header with eth & IPv4"); }
 	
 	set_ip_header_size(parse_number_from_char(&get_ipv4_ihl(eth_ipv4_packet1).field_data[0], 0, 3)*4);
 	test_fetch(get_ip_version    (eth_ipv4_packet1), "E"   );
@@ -1057,7 +1064,7 @@ void run_internal_diagnostics()
 	test_fetch(get_ipv4_snd_addr (eth_ipv4_packet1), "SND4");
 	test_fetch(get_ipv4_rcv_addr (eth_ipv4_packet1), "RCV4");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: fields in header with eth, IPv4, & SCTP"); }
+	if(TRACE_TESTS) { log_trace("TESTING: fields in header with eth, IPv4, & SCTP"); }
 	
 	test_fetch(get_sctp_snd_port (eth_ipv4_packet1), "SP"  );
 	test_fetch(get_sctp_rcv_port (eth_ipv4_packet1), "DP"  );
@@ -1065,15 +1072,15 @@ void run_internal_diagnostics()
 	test_fetch(get_sctp_length   (eth_ipv4_packet1), "l"   );
 	test_fetch(get_sctp_tsn      (eth_ipv4_packet1), "seqn");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: bit-patterns in header with eth & IPv4"); }
+	if(TRACE_TESTS) { log_trace("TESTING: bit-patterns in header with eth & IPv4"); }
 	
 	split_bytes_for_eth_ipv4_sctp_mock_header1(eth_ipv4_packet1);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: test_get_packet_info"); }
+	if(TRACE_TESTS) { log_trace("TESTING: test_get_packet_info"); }
 	
 	test_get_packet_info(eth_ipv4_packet1);
 
-	if(TRACE_FLOW) { log_trace("TESTING: fields in header with eth & IPv6"); }
+	if(TRACE_TESTS) { log_trace("TESTING: fields in header with eth & IPv6"); }
 	
 	test_fetch(get_ip_version    (eth_ipv6_packet1), "v"   );
 	test_fetch(get_ipv6_length   (eth_ipv6_packet1), "PP"  );
@@ -1081,11 +1088,11 @@ void run_internal_diagnostics()
 	test_fetch(get_ipv6_snd_addr (eth_ipv6_packet1), "SND6SND6SND6SND6");
 	test_fetch(get_ipv6_rcv_addr (eth_ipv6_packet1), "RCV6RCV6RCV6RCV6");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: bit-patterns in header with eth & IPv6"); }
+	if(TRACE_TESTS) { log_trace("TESTING: bit-patterns in header with eth & IPv6"); }
 	
 	split_interesting_bytes_for_IPv6(eth_ipv6_packet1);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: fields in header with eth, IPv4, & SCTP"); }
+	if(TRACE_TESTS) { log_trace("TESTING: fields in header with eth, IPv4, & SCTP"); }
 	
 	set_ip_header_size(40);
 	test_fetch(get_sctp_snd_port (eth_ipv6_packet1), "SP"  );
@@ -1094,21 +1101,21 @@ void run_internal_diagnostics()
 	test_fetch(get_sctp_length   (eth_ipv6_packet1), "l"   );
 	test_fetch(get_sctp_tsn      (eth_ipv6_packet1), "seqn");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: bit-patterns in header with eth & IPv6"); }
+	if(TRACE_TESTS) { log_trace("TESTING: bit-patterns in header with eth & IPv6"); }
 	
 	split_interesting_bytes_for_IPv6(eth_ipv6_packet1);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: test_get_packet_info"); }
+	if(TRACE_TESTS) { log_trace("TESTING: test_get_packet_info"); }
 	
 	test_get_packet_info(eth_ipv6_packet1);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: testing reverse function"); }
+	if(TRACE_TESTS) { log_trace("TESTING: testing reverse function"); }
 	
 	test_reverse_byte (240);
 	test_reverse_byte (252);
 	test_reverse_byte (192);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: testing are_inverse function"); }
+	if(TRACE_TESTS) { log_trace("TESTING: testing are_inverse function"); }
 	
 	test_are_inverse (240, 15,  1);     test_are_inverse (252, 63,  1);
 	test_are_inverse (192, 3,   1);     test_are_inverse (192, 11,  0);
@@ -1120,7 +1127,7 @@ void run_internal_diagnostics()
 	test_are_inverse (255, 239, 0);     test_are_inverse (255, 223, 0);
 	test_are_inverse (255, 191, 0);     test_are_inverse (255, 127, 0);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: testing get_weight function"); }
+	if(TRACE_TESTS) { log_trace("TESTING: testing get_weight function"); }
 	
 	test_get_pos_weight (0, 1  );       test_get_pos_weight (1, 2  );
 	test_get_pos_weight (2, 4  );       test_get_pos_weight (3, 8  );
@@ -1128,14 +1135,14 @@ void run_internal_diagnostics()
 	test_get_pos_weight (6, 64 );       test_get_pos_weight (7, 128);
 	test_get_pos_weight (8, 256);       test_get_pos_weight (9, 512);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: testing decompose and recompose"); }
+	if(TRACE_TESTS) { log_trace("TESTING: testing decompose and recompose"); }
 	
 	test_de_recompose(1,  0);           test_de_recompose(2,   1);
 	test_de_recompose(4,  2);           test_de_recompose(8,   3);
 	test_de_recompose(16, 4);           test_de_recompose(32,  5);
 	test_de_recompose(64, 6);           test_de_recompose(128, 7);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: verifying weight constants"); }
+	if(TRACE_TESTS) { log_trace("TESTING: verifying weight constants"); }
 	
 	if (P0 != 1  ) { printf("\n  ERROR: bad constant weight P0!"); outcome = 0; }             
 	if (P1 != 2  ) { printf("\n  ERROR: bad constant weight P1!"); outcome = 0; }  
@@ -1146,25 +1153,25 @@ void run_internal_diagnostics()
 	if (P6 != 64 ) { printf("\n  ERROR: bad constant weight P6!"); outcome = 0; }
 	if (P7 != 128) { printf("\n  ERROR: bad constant weight P7!"); outcome = 0; }
 	
-	if(TRACE_FLOW) { log_trace("TESTING: verifying weight constants"); }
+	if(TRACE_TESTS) { log_trace("TESTING: verifying weight constants"); }
 	
 	test_fetch(get_ip_version    (eth_ipv4_addr), "E"   );
 	test_fetch(get_ipv4_snd_addr (eth_ipv4_addr), "ABCD");
 	test_fetch(get_ipv4_rcv_addr (eth_ipv4_addr), "abcd");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: blind addr fetch"); }
+	if(TRACE_TESTS) { log_trace("TESTING: blind addr fetch"); }
 	
 	test_get_ipv4v6_addr(get_snd_addr(eth_ipv4_addr), "ABCD"            , 4 );
 	test_get_ipv4v6_addr(get_rcv_addr(eth_ipv4_addr), "abcd"            , 4 );
 	test_get_ipv4v6_addr(get_snd_addr(eth_ipv6_addr), "ABCDABCDABCDABCD", 16);
 	test_get_ipv4v6_addr(get_rcv_addr(eth_ipv6_addr), "abcdabcdabcdabcd", 16);
 	
-	if(TRACE_FLOW) { log_trace("TESTING: make ipv4 readable"); }
+	if(TRACE_TESTS) { log_trace("TESTING: make ipv4 readable"); }
 	
 	test_make_ipv4_readable(get_ipv4_snd_addr(eth_ipv4_addr), "65.66.67.68" );
 	test_make_ipv4_readable(get_ipv4_rcv_addr(eth_ipv4_addr), "97.98.99.100");
 	
-	if(TRACE_FLOW) { log_trace("TESTING: make ipv6 readable"); }
+	if(TRACE_TESTS) { log_trace("TESTING: make ipv6 readable"); }
 	
 	test_make_ipv6_readable(get_ipv6_snd_addr(eth_ipv6_addr), "4142:4344:4142:4344:4142:4344:4142:4344");
 	test_make_ipv6_readable(get_ipv6_rcv_addr(eth_ipv6_addr), "6162:6364:6162:6364:6162:6364:6162:6364");
@@ -1174,32 +1181,9 @@ void run_internal_diagnostics()
 
 }
 
-void parse_entire_packet(char* filename, int version, int ihl, int ip_payload, int nw_prot, char* snd_ip, char* rcv_ip, int snd_port, int rcv_port, int seq, int is_ack, int ack_nr) 
-{
-	char header[PACKET_LIMIT];
-	memset(header, 0, PACKET_LIMIT);
-	pkt_ptr real_pkt = malloc(sizeof(pkt_ptr));
-	load_header_from_file(filename, header);
-	real_pkt = make_packet_from_string(header, PACKET_LIMIT);
-	test_parse_ipv4_packet(real_pkt, version, ihl, ip_payload, nw_prot, snd_ip, rcv_ip, snd_port, rcv_port, seq, is_ack, ack_nr); //Packet, V, IHL, TL, P, SND_IP, RCV_IP, SND_PORT, RCV_PORT, SEQ, IS_ACK
-	free(real_pkt);
-}
-
-void run_external_diagnostics()
-{
-	if(TRACE_FLOW) { log_trace("TESTING: parsing entire packets"); }
-	
-	parse_entire_packet("packet02_tcp", 4, 20, 60, 6,   "10.0.0.3", "10.0.0.4", 60895, 12345, 0, 0, 0); //Packet, V, IHL, TL, P, SND_IP, RCV_IP, SND_PORT, RCV_PORT, SEQ, IS_ACK
-	parse_entire_packet("packet01",     4, 20, 36, 132, "10.0.0.3", "10.0.0.4", 37041, 12346, 0, 0, 0); //Packet, V, IHL, TL, P, SND_IP, RCV_IP, SND_PORT, RCV_PORT, SEQ, IS_ACK
-	
-	if(outcome) { printf("\n  Diagnostic passed!\n"      ); }
-	else        { printf("\n  Diagnostic FAILED!\n\a\a\a"); }
-}
-
 void run_diagnostics()
 {
 	if(TEST_INTERNALS) { run_internal_diagnostics(); }
-	if(TEST_EXTERNALS) { run_external_diagnostics(); }
 }
 
 #endif

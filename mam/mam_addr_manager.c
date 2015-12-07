@@ -73,7 +73,7 @@ int list_contains_addr(addr_link* list, char* addr);
 void fill_with_chars(char c, int count);
 void printf_std_bar();
 void print_list_header();
-void print_list_entry(char* snd_addr, char* rcv_addr, int jitt, int loss, float srtt);
+void print_list_entry(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt);
 int mam_get_pos_weight(int pos);
 unsigned int mam_parse_number_from_char(char* c, int lsb, int msb);
 char* mam_make_ipv4_readable(char* readable_addr, char* addr);
@@ -89,7 +89,7 @@ void get_index();
 void setup_semaphore();
 void get_semaphore();
 
-void create_and_add_item_to_list(char* snd_addr, char* rcv_addr, int jitt, int loss, int srtt);
+void create_and_add_item_to_list(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt);
 int remove_item_from_list(char* snd_addr, char* rcv_addr);
 
 void reset_iterator();
@@ -201,7 +201,7 @@ void debug_item(data_item* item) {
 	printf("\n      RCV_ADDR:  %s", item->rcv_addr);
 	printf("\n      LOSS:      %d", item->loss);
 	printf("\n      JITTER:    %d", item->jitt);
-	printf("\n      SRTT:      %d", item->srtt);
+	printf("\n      SRTT:      %llu", item->srtt);
 }
 
 void unmap_link(data_item* item) 
@@ -246,7 +246,7 @@ data_item* reset_and_get_first()
 
 data_item* get_next(data_item* item)
 {
-	if(item->is_next == 1) { return map_existing_link(item->next_name); }
+	if(item->is_next == 1) { printf("\n get_next");fflush(stdout); return map_existing_link(item->next_name); }
 	return NULL;
 }
 
@@ -300,7 +300,7 @@ void set_item_data(data_item* item, char* snd_addr, char* rcv_addr, int jitt, in
 	if(loss     != NO_NEW_VALUE) 			{ item->loss     = loss;   							    }
 }
 
-int override_item_data(char* snd_addr, char* rcv_addr, int jitt, int loss, int srtt, int size)
+int override_item_data(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt, int size)
 {
 	data_item* item = reset_and_get_first();
 	while(item != NULL)
@@ -430,12 +430,12 @@ void print_list_header()
 	printf("\n%18s%18s%11s%11s%11s", "snd_addr", "rcv_addr", "jitter", "loss", "srtt");
 }
 
-void print_list_entry(char* snd_addr, char* rcv_addr, int jitt, int loss, float srtt)
+void print_list_entry(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt)
 {
 	char snd_ipv4[20];
 	char rcv_ipv4[20];
 	
-	printf("\n%18s%18s%11d%11d%11.2f", mam_make_ipv4_readable(snd_ipv4, snd_addr), mam_make_ipv4_readable(rcv_ipv4, rcv_addr), jitt, loss, srtt);
+	printf("\n%18s%18s%11d%11d%11llu", mam_make_ipv4_readable(snd_ipv4, snd_addr), mam_make_ipv4_readable(rcv_ipv4, rcv_addr), jitt, loss, srtt);
 }
 
 /**********************************************************************/
@@ -514,7 +514,7 @@ void get_semaphore() //get_semaphore
 /* - Public utilities -                                               */
 /**********************************************************************/
 
-void create_and_add_item_to_list(char* snd_addr, char* rcv_addr, int jitt, int loss, int srtt)
+void create_and_add_item_to_list(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt)
 {
 	if(TRACE_FLOW) { trace_flow("ENTERING: create_and_add_item_to_list"); }
 	data_item* item = create_new_item();
@@ -602,20 +602,25 @@ int entry_exists(char* snd_addr, char* rcv_addr)
 }*/
 int addrcmp(char* snd_addr, char* rcv_addr, int size)
 {
+	if(TRACE_FLOW) { trace_flow("ENTERING: addrcmp"); }
 	int i = 0;
-	for(i=0; i< size; i++)
+	for(i = 0; i < size; i++)
 	{
-		if (snd_addr[i] != rcv_addr[i]) return 0;
+		if (snd_addr[i] != rcv_addr[i]) { return 0; }
 	}
+	if(TRACE_FLOW) { trace_flow("Leaving: addrcmp"); }
 	return 1;
 }
 
 int entry_exists(char* snd_addr, char* rcv_addr, int size) 
 {	
 	data_item* item = reset_and_get_first();
+	char snd[LARGEST_KNOWN_FIELD], rcv[LARGEST_KNOWN_FIELD];
 	while(item != NULL)
 	{
-		if(addrcmp(item->snd_addr, snd_addr, size) && addrcmp(item->rcv_addr, rcv_addr, size) ) { return 1; }
+		memcpy(snd, item->snd_addr, LARGEST_KNOWN_FIELD);
+		memcpy(rcv, item->rcv_addr, LARGEST_KNOWN_FIELD);
+		if(addrcmp(snd, snd_addr, size) && addrcmp(rcv, rcv_addr, size) ) { return 1; }
 		item = get_next(item);
 	}
 	return 0;

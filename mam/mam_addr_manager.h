@@ -10,11 +10,12 @@
 
 //Used internally; linking via shared memory mapping
 typedef struct data_item {
+	int sem;
 	char snd_addr[LARGEST_KNOWN_FIELD];
 	char rcv_addr[LARGEST_KNOWN_FIELD];
-	int jitt;
-	int loss;
-	int srtt;
+	unsigned int jitt;
+	unsigned int loss;
+	long long srtt;
 	char next_name[NAME_SIZE];  //Name of child entry, if is_next
 	char item_name[NAME_SIZE];  //Name of entry itself
 	int is_next;
@@ -50,11 +51,11 @@ int  get_partner_status();
 
 
 //Create and modify shared list
-void create_and_add_item_to_list (char* snd_addr, char* rcv_addr, int jitt, int loss, int srtt);
+void create_and_add_item_to_list (char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt);
 void add_item_to_list            (data_item* new_item);
 int  remove_item_from_list       (char* snd_addr, char* rcv_addr);
 //data_item* get_data_item         (char* snd_addr, char* rcv_addr);
-int override_item_data(char* snd_addr, char* rcv_addr, int jitt, int loss, int srtt, int size);
+int override_item_data(char* snd_addr, char* rcv_addr, int jitt, int loss, long long srtt, int size);
 
 
 //Used to get status of entire shared list
