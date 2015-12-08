@@ -376,7 +376,7 @@ query_addrs* fetch_query() {
 /* - Sniffer socket outbound interface -                              */
 /**********************************************************************/
 
-void commit_reply(char* query) { 
+void commit_reply() { 
 	if(sniffer_sockfd == 0) { setup_query_listener(); }
 	if(sendto(sniffer_sockfd, &reply_to_send, reply_index + 3, 0, (struct sockaddr *)&policy_addr,  policy_addr_len) < 0) { trace_log("ERROR: send failed!"); }
 	reset_reply();

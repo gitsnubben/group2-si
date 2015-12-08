@@ -13,7 +13,7 @@
 
 void test_socket_query() {
 	query_addrs* query = malloc(sizeof(query_addrs));
-	printf("\n\n  Adding 0 snd, 0 rcv:\n");
+	/*printf("\n\n  Adding 0 snd, 0 rcv:\n");
 	print_struct_query(convert_query_to_struct(query, get_current_query()));
 	commit_query();
 	print_struct_reply(fetch_reply());
@@ -36,7 +36,7 @@ void test_socket_query() {
 	push_query_snd_addr("3.3.3.3");
 	print_struct_query(convert_query_to_struct(query, get_current_query()));
 	commit_query();
-	print_struct_reply(fetch_reply());
+	print_struct_reply(fetch_reply());*/
 	
 	printf("\n\n  Adding 2 snd, 2 rcv:\n");
 	push_query_snd_addr("2.2.2.2");
@@ -48,7 +48,7 @@ void test_socket_query() {
 	print_struct_reply(fetch_reply());
 	
 	
-	printf("\n\n  Adding 32 snd, 32 rcv:\n");
+	/*printf("\n\n  Adding 32 snd, 32 rcv:\n");
 	push_query_snd_addr("200.200.200.201");  push_query_snd_addr("200.200.200.202");
 	push_query_snd_addr("200.200.200.203");  push_query_snd_addr("200.200.200.204");
 	push_query_snd_addr("200.200.200.205");  push_query_snd_addr("200.200.200.206");
@@ -114,7 +114,7 @@ void test_socket_query() {
 	push_query_rcv_addr("2.2.2.2");
 	print_struct_query(convert_query_to_struct(query, get_current_query()));
 	commit_query();
-	print_struct_reply(fetch_reply());
+	print_struct_reply(fetch_reply());*/
 	
 	close_query_dispatcher();
 }
