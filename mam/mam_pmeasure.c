@@ -84,8 +84,8 @@ void compute_srtt(void *pfx, void *data)
 void pmeasure_setup()
 {
 	DLOG(MAM_PMEASURE_NOISY_DEBUG0, "Setting up pmeasure \n");
-	get_state();
-	set_partner_status(1);
+	//get_state();
+	//set_partner_status(1);
 	
 /*	char snd_intents[20];
 	char rcv_intents[20];

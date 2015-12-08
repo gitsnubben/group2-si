@@ -1,0 +1,6 @@
+gcc -c si_exp.c
+gcc -c to_rmd.c
+
+gcc -o to_rmd to_rmd.c si_exp.c
+
+./to_rmd

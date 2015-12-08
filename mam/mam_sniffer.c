@@ -13,25 +13,29 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include "mam_addr_manager.h"
+#include <fcntl.h>
+//#include "mam_addr_manager.h"
 #include "header_parser.h"
+#include "si_exp.h"
+#include "query_handler.h"
 
 #define TRACE_FLOW 0          //Only trace if no daemonize
 float ALPHA = 0.5;           // the aplha constant in rtt calcualtions
 
 #define BUFFER_SIZE 65536
 #define PAIR_TTL 40       // TTL in seconds, freeing memory used by this pair.
-#define DATA_IS_OLD 4     // data is old after xx seconds
+#define DATA_IS_OLD 1     // data is old after xx seconds
 
 typedef struct packet_list {
-	packet_info pkt;
+	packet_info pkt_info;
 	long long time_stamp;
 	struct packet_list* next;
 } packet_list;
 
 typedef struct snd_rcv_pair {
-	char snd_addr[LARGEST_KNOWN_FIELD];
-	char rcv_addr[LARGEST_KNOWN_FIELD];
+	char snd_addr[FIELD_LIMIT];
+	char rcv_addr[FIELD_LIMIT];
+	int addr_size;
 	packet_list* pkts;
 	long long time_stamp;
 	int pkts_sent;
@@ -40,7 +44,7 @@ typedef struct snd_rcv_pair {
 	struct snd_rcv_pair* next;
 } snd_rcv_pair;
 
-snd_rcv_pair* head = NULL;   // global head of pair list
+snd_rcv_pair* pair_list = NULL;   // global head of pair list
 
 long long get_time_stamp();
 
@@ -91,12 +95,10 @@ void add_packet_to_list(packet_list* pkt, snd_rcv_pair* pair)
 
 void print_packet(packet_list* item)
 {
-	char snd_ipv4[20];
-	char rcv_ipv4[20];
-	if(item->pkt.chunk != NULL)
-		printf("\n%24s%24s%24u%24u%24lld", make_ipv4_readable(snd_ipv4, item->pkt.snd_addr), make_ipv4_readable(rcv_ipv4, item->pkt.rcv_addr), item->pkt.chunk->seq_nr, item->pkt.chunk->ack_nr, item->time_stamp);
+	if(item->pkt_info.chunk != NULL)
+		printf("\n%24s%24s%24u%24u%24lld", item->pkt_info.snd_addr,item->pkt_info.rcv_addr, item->pkt_info.chunk->seq_nr, item->pkt_info.chunk->ack_nr, item->time_stamp);
 	else
-		printf("\n%24s%24s%24lld", make_ipv4_readable(snd_ipv4, item->pkt.snd_addr), make_ipv4_readable(rcv_ipv4, item->pkt.rcv_addr), item->time_stamp);
+		printf("\n%24s%24s%24lld", item->pkt_info.snd_addr, item->pkt_info.rcv_addr, item->time_stamp);
 }
 
 void print_packet_list(packet_list* pkts) 
@@ -104,7 +106,10 @@ void print_packet_list(packet_list* pkts)
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: print_packet_list"); }
 	packet_list* item = pkts;
 	if(item == NULL) // empty list
+	{
+		printf("\n  EMPTY PACKET LIST");
 		return;
+	}
 	printf("\n%24s%24s%24s%24s%24s", "snd_addr", "rcv_addr", "seq nr", "ack nr", "time_stamp");
 	while (item != NULL) 
 	{
@@ -147,17 +152,15 @@ void remove_packets_for_pair(snd_rcv_pair* pair)
 void print_pair_list()
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: print_pair_list"); }
-    char snd_ipv4[20];
-	char rcv_ipv4[20];
-	snd_rcv_pair* item = head;
+	snd_rcv_pair* item = pair_list;
 	print_double_bar();
 	printf("\n                             LIST OF PAIRS");
 	print_double_bar(); 
 	while (item != NULL)
 	{
-		print_single_bar();
-		printf("\n              Pair:   %s       %s", make_ipv4_readable(snd_ipv4, item->snd_addr), make_ipv4_readable(rcv_ipv4, item->rcv_addr ));
-		print_single_bar();
+		print_double_bar();
+		printf("\n              Pair:   %s       %s", item->snd_addr, item->rcv_addr);
+		print_double_bar();
 		print_packet_list(item->pkts);
 		item = item->next;
 	}
@@ -185,11 +188,11 @@ void set_new_time_stamp_for(snd_rcv_pair* pair) { pair->time_stamp = get_time_st
 snd_rcv_pair* get_pair(char* snd, char* rcv)
 { 
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: get_pair"); }
-	snd_rcv_pair* pair = head;
+	snd_rcv_pair* pair = pair_list;
 	while (pair != NULL) 
 	{
-		if((addr_cmp(pair->snd_addr, snd, 4) && addr_cmp(pair->rcv_addr, rcv, 4)) 
-		|| (addr_cmp(pair->rcv_addr, snd, 4) && addr_cmp(pair->snd_addr, rcv, 4)))
+		if((addr_cmp(pair->snd_addr, snd, pair->addr_size) && addr_cmp(pair->rcv_addr, rcv, pair->addr_size)) 
+		|| (addr_cmp(pair->rcv_addr, snd, pair->addr_size) && addr_cmp(pair->snd_addr, rcv, pair->addr_size)))
 		{
 			set_new_time_stamp_for(pair); // Pair got new data, update timestamp so it doesnt get old and removed
 			return pair;
@@ -201,44 +204,61 @@ snd_rcv_pair* get_pair(char* snd, char* rcv)
 	return NULL;
 }
 
-snd_rcv_pair* init_new_pair(snd_rcv_pair* new_pair, char* snd_addr, char* rcv_addr)
+snd_rcv_pair* init_new_pair(snd_rcv_pair* new_pair, char* snd_addr, char* rcv_addr, int addr_size)
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: init_new_pair"); }
 	new_pair = malloc(sizeof(snd_rcv_pair));
 	new_pair->pkts = NULL; //head of list
 	new_pair->srtt = 0;
 	new_pair->time_stamp = get_time_stamp();
-	memcpy(new_pair->snd_addr, snd_addr, LARGEST_KNOWN_FIELD);
-	memcpy(new_pair->rcv_addr, rcv_addr, LARGEST_KNOWN_FIELD);
+	memcpy(new_pair->snd_addr, snd_addr, FIELD_LIMIT);
+	memcpy(new_pair->rcv_addr, rcv_addr, FIELD_LIMIT);
+	new_pair->addr_size = addr_size;
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: init_new_pair"); }
 	return new_pair;
 }
 
 void add_pair_to_list(snd_rcv_pair* new_pair)
 {
-	if(TRACE_FLOW)    { sniffer_trace("ENTERING: add_pair_to_list"); }
-	if (head == NULL) { head = new_pair; new_pair->next = NULL;      }
-	else              { new_pair ->next = head; head = new_pair;     }
-	if(TRACE_FLOW)    { sniffer_trace("LEAVING: add_pair_to_list");  }
+	if(TRACE_FLOW)         { sniffer_trace("ENTERING: add_pair_to_list");            }
+	if (pair_list == NULL) { pair_list = new_pair; new_pair->next = NULL;       }
+	else                   { new_pair ->next = pair_list; pair_list = new_pair; }
+	if(TRACE_FLOW)         { sniffer_trace("LEAVING: add_pair_to_list");        }
+}
+
+int pair_exist(char* snd_addr, char* rcv_addr, int addr_size)
+{
+	snd_rcv_pair* tail = pair_list;
+	while(tail != NULL)
+	{
+		if(addr_cmp(snd_addr, tail->snd_addr, addr_size) && addr_cmp(rcv_addr, tail->rcv_addr, addr_size)) { return 1; }
+		if(addr_cmp(rcv_addr, tail->snd_addr, addr_size) && addr_cmp(snd_addr, tail->rcv_addr, addr_size)) { return 1; }
+		tail = tail->next;
+	}
+	return 0;
+}
+
+void add_new_pair(char* snd, char* rcv, int addr_size)
+{
+	snd_rcv_pair* new_pair = NULL;
+	new_pair = init_new_pair(new_pair, snd, rcv, addr_size);
+	add_pair_to_list(new_pair);
 }
 
 void remove_old_pairs(long long time_stamp)
 {
 	if(TRACE_FLOW)    { sniffer_trace("ENTERING: remove_old_pair");  }
-	snd_rcv_pair* item = head, * prev_pair;
+	snd_rcv_pair* item = pair_list, * prev_pair;
 	while(item != NULL)
 	{
 		if((time_stamp - item->time_stamp) > PAIR_TTL)
 		{
-			//char snd[20], rcv[20];
-			//printf("\n\n*** REMOVING PAIR ***   %s     %s\n\n", make_ipv4_readable(snd, item->snd_addr), make_ipv4_readable(rcv, item->rcv_addr));
-			remove_item_from_list(item->snd_addr, item->rcv_addr); // shared memory
 			remove_packets_for_pair(item); // free memory
-			if(item == head)
+			if(item == pair_list)
 			{
-				head = item->next;
+				pair_list = item->next;
 				free(item);
-				item = head;
+				item = pair_list;
 			}
 			else
 			{
@@ -273,21 +293,21 @@ int snd_rcv_match(snd_rcv_pair* pair, packet_list* pkt, packet_list* ack)
 	// TODO IPV6
 	
 	// IPV4
-	if(addr_cmp(pkt->pkt.snd_addr, pair->snd_addr, 4) && addr_cmp(ack->pkt.snd_addr, pair->rcv_addr, 4)) 
+	if(addr_cmp(pkt->pkt_info.snd_addr, pair->snd_addr, 4) && addr_cmp(ack->pkt_info.snd_addr, pair->rcv_addr, pkt->pkt_info.ip_addr_size)) 
 		return 1;
 	return 0;
 }
 
 int is_seq_nr_lower(packet_list* pkt, packet_list* ack)
 {
-	if(pkt->pkt.chunk->seq_nr < ack->pkt.chunk->ack_nr)
+	if(pkt->pkt_info.chunk->seq_nr < ack->pkt_info.chunk->ack_nr)
 		return 1;
 	return 0;
 }
 
 int is_seq_nr_lower_or_equal(packet_list* pkt, unsigned int sack)
 {
-	if(pkt->pkt.chunk->seq_nr <= sack)
+	if(pkt->pkt_info.chunk->seq_nr <= sack)
 		return 1;
 	return 0;
 }
@@ -297,7 +317,7 @@ unsigned int calculate_new_srtt(int old_srtt, int ack_time_stamp, int pkt_time_s
 	return ((ALPHA * old_srtt) + ((1 - ALPHA) * (ack_time_stamp - pkt_time_stamp))) + 0.5;
 }
 
-void set_new_srtt(snd_rcv_pair* pair, packet_list* ack)
+void set_new_srtt_tcp_pair(snd_rcv_pair* pair, packet_list* ack)
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: set_new_srtt"); }
 	packet_list* pkt = pair->pkts, * prev_pkt;
@@ -306,7 +326,6 @@ void set_new_srtt(snd_rcv_pair* pair, packet_list* ack)
 		if(snd_rcv_match(pair, pkt, ack) && is_seq_nr_lower(pkt, ack))
 		{
 			pair->srtt = calculate_new_srtt(pair->srtt, ack->time_stamp, pkt->time_stamp);
-			override_item_data(pair->snd_addr, pair->rcv_addr, -1, -1, pair->srtt, 4);
 			if(pkt == pair->pkts) // head of list / only one item
 			{
 				remove_acked_packets(pkt);
@@ -327,7 +346,7 @@ void set_new_srtt(snd_rcv_pair* pair, packet_list* ack)
 
 
 
-void set_new_srtt_chunk(snd_rcv_pair* pair, unsigned int sack, packet_list* ack)
+void set_new_srtt_sctp_pair(snd_rcv_pair* pair, unsigned int sack, packet_list* ack)
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: set_new_srtt_chunk"); }
 	packet_list* pkt = pair->pkts, * prev_pkt;
@@ -336,7 +355,6 @@ void set_new_srtt_chunk(snd_rcv_pair* pair, unsigned int sack, packet_list* ack)
 		if(snd_rcv_match(pair, pkt, ack) && is_seq_nr_lower_or_equal(pkt, sack))
 		{
 			pair->srtt = calculate_new_srtt(pair->srtt, ack->time_stamp, pkt->time_stamp);
-			override_item_data(pair->snd_addr, pair->rcv_addr, -1, -1, pair->srtt, 4);
 			if(pkt == pair->pkts) // head of list / only one item
 			{
 				remove_acked_packets(pkt);
@@ -358,6 +376,25 @@ void set_new_srtt_chunk(snd_rcv_pair* pair, unsigned int sack, packet_list* ack)
 /**********************************************************************/
 /* - Data gathering -                                                 */
 /**********************************************************************/
+
+void print_statistics()
+{
+	print_double_bar();
+	printf("\n    NETWORK STATISTICS");
+	print_double_bar();
+	print_double_bar();
+	printf("\n%20s%20s%10s%10s%10s", "snd", "rcv", "srtt", "jitt", "loss");
+	snd_rcv_pair* tail = pair_list;
+	while(tail != NULL)
+	{
+		printf("\n%20s%20s%10d%10d%10d", tail->snd_addr, tail->rcv_addr, tail->srtt, 0, 0);	
+		tail = tail->next;
+	}
+	print_double_bar();
+	printf("\n    END");
+	print_double_bar();
+}
+
 long long get_time_stamp()
 {
 	struct timeval te; 
@@ -372,6 +409,28 @@ void set_time_stamp (packet_list* pkt)
 	pkt->time_stamp = 1000000LL * te.tv_sec + te.tv_usec; // in micro	
 }
 
+/**********************************************************************/
+/* - Process TCP -                                                    */
+/**********************************************************************/
+
+void process_tcp_packet(snd_rcv_pair* pair, packet_list* pkt)
+{
+	if(TRACE_FLOW) { sniffer_trace("ENTERING: process_tcp_packet"); }
+	if(pair != NULL && pkt->pkt_info.chunk->layer4_type == TCP_ACK && addr_cmp(pkt->pkt_info.snd_addr, pair->rcv_addr, pair->addr_size))
+	{
+		set_new_srtt_tcp_pair(pair, pkt);
+	}
+	else if(pair != NULL && addr_cmp(pkt->pkt_info.snd_addr, pair->snd_addr, pair->addr_size))
+	{
+		add_packet_to_list(pkt, pair);
+	}
+	if(TRACE_FLOW) { sniffer_trace("LEAVING: process_tcp_packet"); }
+}
+
+/**********************************************************************/
+/* - Proecess SCTP -                                                  */
+/**********************************************************************/
+
 unsigned int get_sack(chunk_info* chunks)
 {
 	while(chunks != NULL)
@@ -385,36 +444,105 @@ unsigned int get_sack(chunk_info* chunks)
 	return 0;
 }
 
+void process_sctp_packet(snd_rcv_pair* pair, packet_list* pkt)
+{
+	if(TRACE_FLOW) { sniffer_trace("ENTERING: process_sctp_packet"); }
+	if(pair != NULL && addr_cmp(pkt->pkt_info.snd_addr, pair->rcv_addr, pair->addr_size)) 
+	{
+		unsigned int sack_nr = get_sack(pkt->pkt_info.chunk);
+		if(sack_nr != 0) set_new_srtt_sctp_pair(pair, sack_nr, pkt);
+	}
+	else if(pair != NULL && addr_cmp(pkt->pkt_info.snd_addr, pair->snd_addr, pair->addr_size))
+	{
+		add_packet_to_list(pkt, pair);
+	}
+	if(TRACE_FLOW) { sniffer_trace("LEAVING: process_sctp_packet"); }
+}
+
+int setup_data_sniffer_socket()
+{
+	int sockfd, flags;
+	
+    sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    flags = fcntl(sockfd, F_GETFL);
+	flags |= O_NONBLOCK;
+	fcntl(sockfd, F_SETFL, flags);
+	
+    if (sockfd < 0) { if(TRACE_FLOW) { sniffer_trace("    ERROR: socket failed!"); } exit(0); }
+	return sockfd;
+}
+
+int is_valid_protol(packet_list* pkt) 
+{ 
+	if(pkt->pkt_info.layer4_prot == L4_PROT_TCP || pkt->pkt_info.layer4_prot == L4_PROT_SCTP) return 1; 
+	return 0;
+} 
+
+void process(packet_list* pkt)
+{
+	if(!pair_exist(pkt->pkt_info.snd_addr, pkt->pkt_info.rcv_addr, pkt->pkt_info.ip_addr_size)) { add_new_pair(pkt->pkt_info.snd_addr, pkt->pkt_info.rcv_addr, pkt->pkt_info.ip_addr_size); }
+	snd_rcv_pair* pair = get_pair(pkt->pkt_info.snd_addr, pkt->pkt_info.rcv_addr);
+	if(pkt->pkt_info.chunk != NULL)
+	{
+		if(pkt->pkt_info.layer4_prot == L4_PROT_TCP)
+		{
+			process_tcp_packet(pair, pkt);
+		}
+		else if(pkt->pkt_info.layer4_prot == L4_PROT_SCTP)
+		{ 	
+			process_sctp_packet(pair, pkt);
+		}
+	}
+	else
+		free(pkt);
+}
+
 void gather_data()
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: gather_data"); }
-	int sockfd;
-	socklen_t saddr_size;
+	int sockfd = setup_data_sniffer_socket();
 	struct sockaddr saddr;
+	socklen_t saddr_size = sizeof(saddr);
 	char *buffer = (char *)malloc(BUFFER_SIZE);
-	
-    sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (sockfd < 0) 
-    {
-		if(TRACE_FLOW) { sniffer_trace("    ERROR: socket failed!"); }
-		exit(0); 
-	}
 	pkt_ptr ppkt = malloc(sizeof(pkt_ptr)); 
-	long long last_update = get_time_stamp();			
-	while(get_partner_status()) // as long as mam is up we gather data
+	query_addrs* addrs;
+	long long last_update = get_time_stamp();
+			
+	while(1)
 	{
-		packet_list* pkt = malloc(sizeof(packet_list));
-		saddr_size = sizeof(saddr);
-        ppkt->packet_size = recvfrom(sockfd , buffer , BUFFER_SIZE , 0 , &saddr , &saddr_size);
-        set_time_stamp(pkt); // setting timestamp directly when packet is received
+		addrs = fetch_query(buffer);
+		if(addrs != NULL) { 
+			push_reply_addr_pair("10.0.0.1", "10.0.0.2", 0, 1, 2, 3);
+			push_reply_addr_pair("10.0.0.3", "10.0.0.4", 4, 5, 6, 7);
+			commit_reply();
+		}
+		
+        ppkt->packet_size = recvfrom(sockfd , buffer , BUFFER_SIZE , 0 , &saddr , &saddr_size);   
+        //if(ppkt->packet_size == -1 || ppkt->packet_size == EWOULDBLOCK || ppkt->packet_size == EWOULDBLOCK) // NON bocking check, recvfrom returns -1 if no data received
+			//continue;
+			
+		if(ppkt->packet_size > 0) 
+		{
+			packet_list* pkt = malloc(sizeof(packet_list));
+			set_time_stamp(pkt);
+			ppkt->packet_data = buffer;
+			pkt->pkt_info = get_packet_info(ppkt);
+			if(is_valid_protol(pkt)) { process(pkt); }
+			else                     { free(pkt);    }
+		}
+        
+       /* packet_list* pkt = malloc(sizeof(packet_list));
+        set_time_stamp(pkt);
         ppkt->packet_data = buffer;
-        pkt->pkt = get_packet_info(ppkt);
-        if(pkt->pkt.layer4_prot != L4_PROT_TCP && pkt->pkt.layer4_prot != L4_PROT_SCTP)
+        pkt->pkt = get_packet_info(ppkt);*/
+        
+        /*if(pkt->pkt.layer4_prot != L4_PROT_TCP && pkt->pkt.layer4_prot != L4_PROT_SCTP)
         {
 			if(TRACE_FLOW) { sniffer_trace("INVALID PROTOCOL! (i.e. not TCP or SCTP ATM)"); }
 			free(pkt);
 			continue;
-		}
+		}*/
+		
         //SCPT
         //pkt->pkt = get_packet_info(ppkt);
         
@@ -435,52 +563,28 @@ void gather_data()
 			print_marcus_header(buffer, ppkt->packet_size, pkt->pkt.rcv_addr);
 			//exit(0);
 		}*/
-
-		// Adding new pair to list
-        if(!entry_exists(pkt->pkt.snd_addr, pkt->pkt.rcv_addr, pkt->pkt.ip_addr_size) && !entry_exists(pkt->pkt.rcv_addr, pkt->pkt.snd_addr, pkt->pkt.ip_addr_size))
-        {
-			snd_rcv_pair* new_pair = init_new_pair(new_pair, pkt->pkt.snd_addr, pkt->pkt.rcv_addr);
-			create_and_add_item_to_list(pkt->pkt.snd_addr, pkt->pkt.rcv_addr, 0, 0 ,0 ); // shared memory
-			add_pair_to_list(new_pair);
-	    }
+		
+		/*add_new_pair(pkt->pkt.snd_addr, pkt->pkt.rcv_addr, pkt->pkt.ip_addr_size);
 	    snd_rcv_pair* pair = get_pair(pkt->pkt.snd_addr, pkt->pkt.rcv_addr);
 	    if(pkt->pkt.chunk != NULL)
 	    {
 			if(pkt->pkt.layer4_prot == L4_PROT_TCP)
 			{
-				if(pair != NULL && pkt->pkt.chunk->layer4_type == TCP_ACK && addr_cmp(pkt->pkt.snd_addr, pair->rcv_addr, 4)) // && pkt->pkt.chunk->layer4_type == 1
-				{
-					set_new_srtt(pair, pkt);
-				}
-				else if(pair != NULL && addr_cmp(pkt->pkt.snd_addr, pair->snd_addr, 4)) // !pkt->pkt.chunk->layer4_type
-				{
-					add_packet_to_list(pkt, pair);
-				}
+				process_tcp_packet(pair, pkt);
 			}
 			else if(pkt->pkt.layer4_prot == L4_PROT_SCTP)
 			{ 	
-				if(pair != NULL && addr_cmp(pkt->pkt.snd_addr, pair->rcv_addr, 4)) // && pkt->pkt.chunk->layer4_type == 1
-				{
-					unsigned int sack_nr = get_sack(pkt->pkt.chunk);
-					if(sack_nr != 0) set_new_srtt_chunk(pair, sack_nr, pkt);
-				}
-				else if(pair != NULL && addr_cmp(pkt->pkt.snd_addr, pair->snd_addr, 4)) // !pkt->pkt.chunk->layer4_type
-				{
-					add_packet_to_list(pkt, pair);
-				}
-				//unsigned int sack_nr = get_sack(pkt->pkt.chunk);
-				//if(sack_nr != 0) set_new_srtt_chunk(pair, sack_nr, pkt);
-				//add_packet_to_list(pkt, pair);
+				process_sctp_packet(pair, pkt);
 			}
 		}
 		else
-			free(pkt);
+			free(pkt);*/
 			
 		if((get_time_stamp() - last_update) > DATA_IS_OLD) // UPDATE lists 
 		{ 
 			//print_pair_list();
-		
-			print_list();  
+			print_statistics();
+			//print_list(); 
 			remove_old(get_time_stamp()); 
 			last_update = get_time_stamp();
 		} 
@@ -488,7 +592,7 @@ void gather_data()
 	}
 	/*if(TRACE_FLOW)*/ { sniffer_trace("  SHUTTING DOWN SNIFFER"); }
     close(sockfd);
-    delete_state();
+    //delete_state();
     //close_file();
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: gather_data"); }
 }
@@ -521,7 +625,7 @@ void daemonize()
 void wait_for_mam()
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: wait_for_mam"); }
-	while(!get_partner_status()) { ; }
+	//while(!get_partner_status()) { ; }
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: wait_for_mam"); }
 }
 
@@ -530,27 +634,12 @@ void wait_for_mam()
 /**********************************************************************/
 
 int main()
-{
-	//Functions at 266 will fetch ALL headers of interest, they only return bytes of data, i.e. mulitple of 8 bits
-	//You should not have to bother with what has ben written allready, but you need to know how to use this module
-	//These functions require that you UPDATE THE STATE whenever you:
-	//  1. Learn the IP-header size, which you may set by calling set_ip_header_size()
-	//  2. Cannot get the STL from current chunk, set the new chunk offset via set_sctp_chunk_jump() to where the next chunk starts
-	//Keep in mind that the IPv4 header size varies, to get its size call get_ipv4_ihl() 
-	//IHL is half a byte, so parse a number from bits 0-3, using parse_number_from_char(<some_char>, 0, 3)
-	//When the IP header size is determined, call set_ip_header_size()
-	//Similar may apply to getting SCTP TSL field, you may have to move from chunk to chunk
-	//It is to be determined which fields have to be flipped
-	//Consider that flipping is only required when a HUMAN is to interpret the info
-	//Recommend you defer getting the TSL (SEQ) number until last, start by just filtering flows
-	//Filter can be hardcoded, should otherwise be set by mommy via share_memory
-	//There is so sniffer logic here, move that stuff in here, rename this file, and rename main()
-	//Run diagnstics if you think something has been broken, TRACE_MATCH will give more details
-	//Or not
-
-	setup_state();
-	wait_for_mam();
+{	
+	setup_query_listener();
 	gather_data();
-	
 	return 0;
 }
+
+/**********************************************************************/
+/* - End -                                                            */
+/**********************************************************************/

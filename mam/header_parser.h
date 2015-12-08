@@ -1,4 +1,5 @@
-#define LARGEST_KNOWN_FIELD 20
+#include "si_exp.h"
+
 #define PACKET_LIMIT 65536
 
 #define CHUNK_DATA 0
@@ -16,7 +17,7 @@ struct packet {
 typedef struct packet* pkt_ptr;
 
 typedef struct header_field {
-	char field_data[LARGEST_KNOWN_FIELD];
+	char field_data[FIELD_LIMIT];
 	int field_size;
 } header_field; 
 
@@ -31,8 +32,8 @@ typedef struct chunk_info {
 
 typedef struct packet_info {
 	unsigned short int ip_version;      //Parsed in gather_L3_header_info()
-	char snd_addr[LARGEST_KNOWN_FIELD]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
-	char rcv_addr[LARGEST_KNOWN_FIELD]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	char snd_addr[FIELD_LIMIT]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	char rcv_addr[FIELD_LIMIT]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
 	unsigned short int ip_addr_size;    //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
 	unsigned short int layer4_prot;     //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info() 
 	unsigned short int snd_port;        //Parsed in gather_tcp_header_info() or gather_sctp_header_info()

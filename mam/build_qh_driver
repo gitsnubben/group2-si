@@ -1,0 +1,7 @@
+gcc -c -Wall qh_driver.c
+gcc -c -Wall query_handler.c
+gcc -c -Wall si_exp.c
+
+gcc -o qh_driver query_handler.c qh_driver.c si_exp.c
+
+./qh_driver

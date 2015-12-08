@@ -246,7 +246,7 @@ data_item* reset_and_get_first()
 
 data_item* get_next(data_item* item)
 {
-	if(item->is_next == 1) { printf("\n get_next");fflush(stdout); return map_existing_link(item->next_name); }
+	if(item->is_next == 1) { return map_existing_link(item->next_name); }
 	return NULL;
 }
 

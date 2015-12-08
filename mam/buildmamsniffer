@@ -1,6 +1,8 @@
 gcc -c mam_sniffer.c
 gcc -c mam_addr_manager.c
 gcc -c header_parser.c
+gcc -c si_exp.c
+gcc -c query_handler.c
 
-gcc -o mam_sniffer mam_sniffer.c mam_addr_manager.c header_parser.c -lrt
+gcc -o mam_sniffer mam_sniffer.c mam_addr_manager.c header_parser.c si_exp.c query_handler.c -lrt
 sudo ./mam_sniffer

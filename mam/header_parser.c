@@ -410,8 +410,13 @@ void gather_ipv4_header_info(pkt_ptr pkt, packet_info_ptr info)
 {
 	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv4_header"); }     
 	set_ip_header_size(get_num_ipv4_ihl(pkt));
-	memcpy(info->snd_addr, &get_ipv4_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 snd address
-	memcpy(info->rcv_addr, &get_ipv4_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 rcv address
+	//   READABLE
+	char readable_addr[FIELD_LIMIT];
+	memcpy(info->snd_addr, make_ipv4_readable(readable_addr, &get_ipv4_snd_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 snd address
+	memcpy(info->rcv_addr, make_ipv4_readable(readable_addr, &get_ipv4_rcv_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 rcv address
+	//   NOT READABLE
+	//memcpy(info->snd_addr, &get_ipv4_snd_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 snd address
+	//memcpy(info->rcv_addr, &get_ipv4_rcv_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 rcv address
 	info->layer4_prot = get_num_ipv4_prot(pkt);                         //Adding layer 4 protocol
 	info->ip_addr_size = 4;                                             //Adding layer 3 address size
 	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv4_header");  }    
@@ -420,9 +425,14 @@ void gather_ipv4_header_info(pkt_ptr pkt, packet_info_ptr info)
 void gather_ipv6_header_info(pkt_ptr pkt, packet_info_ptr info)
 {
 	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv6_header"); } 
-	set_ip_header_size(get_ipv6_header_size());   
-	memcpy(info->snd_addr, &get_ipv6_snd_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 snd address
-	memcpy(info->rcv_addr, &get_ipv6_rcv_addr(pkt).field_data[0], LARGEST_KNOWN_FIELD); //Adding layer 3 rcv address
+	set_ip_header_size(get_ipv6_header_size());
+	//   READABLE
+	char readable_addr[FIELD_LIMIT];
+	memcpy(info->snd_addr, make_ipv4_readable(readable_addr, &get_ipv6_snd_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 snd address
+	memcpy(info->rcv_addr, make_ipv4_readable(readable_addr, &get_ipv6_rcv_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 rcv address
+	//   NOT READABLE 
+	//memcpy(info->snd_addr, &get_ipv6_snd_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 snd address
+	//memcpy(info->rcv_addr, &get_ipv6_rcv_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 rcv address
 	info->layer4_prot = get_num_ipv6_prot(pkt);                                         //Adding layer 4 protocol
 	info->ip_addr_size = 16;                                                            //Adding layer 3 address size
 	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv6_header");  }  	      
@@ -501,8 +511,8 @@ void gather_L4_header_info(pkt_ptr pkt, packet_info_ptr info)
 packet_info packet_info_init()
 {
 	packet_info info;
-	memset(info.snd_addr, 0, LARGEST_KNOWN_FIELD);
-	memset(info.rcv_addr, 0, LARGEST_KNOWN_FIELD);
+	memset(info.snd_addr, 0, FIELD_LIMIT);
+	memset(info.rcv_addr, 0, FIELD_LIMIT);
 	info.ip_version = 0;     info.ip_addr_size = 0;
 	info.layer4_prot = 0;    info.snd_port = 0;
 	info.rcv_port = 0;       info.chunk = NULL;
@@ -622,7 +632,7 @@ void print_packet_info(packet_info_ptr info)
 	print_std_line();
 	printf("\n  PACKET:");
 	print_std_line();
-	char c[LARGEST_KNOWN_FIELD];
+	char c[FIELD_LIMIT];
 	chunk_info_ptr probe = info->chunk;
 	printf("\n  IP VERSION: %u",  info->ip_version);						printf("\n  SND ADDR: %s", make_ipv4_readable(c, info->snd_addr));
 	printf("\n  RCV ADDR: %s",    make_ipv4_readable(c, info->rcv_addr));	printf("\n  IP ADDR SIZE: %u", info->ip_addr_size);
