@@ -11,18 +11,11 @@ LEX_FILE(mam_configs.l)
 SET(cleanup_files mam_configp.c mam_configp.output mam_configs.c)
 SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${cleanup_files}")
 
-#add_library(rt_label SHARED IMPORTED)
-#set_property(TARGET rt_label PROPERTY IMPORTED LOCATION /usr/lib/i386-linux-gnu/librt.so) 
-
-########## this shouldbe don in another cmake file, where do we declare variables?
-#FIND_LIBRARY(LIBRT librt /usr/lib/i386-linux-gnu)
-##########
-
 ADD_LIBRARY(mam SHARED mam_ctx.c mam_iface.c mam_util.c)
 TARGET_LINK_LIBRARIES(mam muacc y ltdl ${LIBEVENT_LIBRARIES} ${GLIB2_LIBRARIES})
 
-ADD_EXECUTABLE(mamma mam mam_configp.c mam_configs.c mam_master.c mam_pmeasure.c mam_addr_manager.c query_handler.c)
-TARGET_LINK_LIBRARIES(mamma mam uuid ${LIBEVENT_LIBRARIES} ${GLIB2_LIBRARIES} /usr/lib/i386-linux-gnu/librt.so)
+ADD_EXECUTABLE(mamma mam mam_configp.c mam_configs.c mam_master.c mam_pmeasure.c query_handler.c si_exp.c)
+TARGET_LINK_LIBRARIES(mamma mam uuid ${LIBEVENT_LIBRARIES} ${GLIB2_LIBRARIES})
 
 SET_TARGET_PROPERTIES(mamma
 PROPERTIES 	BUILD_WITH_INSTALL_RPATH TRUE

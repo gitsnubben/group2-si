@@ -1,6 +1,9 @@
 #ifndef SI_EXP
 #define SI_EXP
 
+//Trace flow for modules
+#define TRACE_QH_FLOW 0
+
 //General limits, FIELD_LIMIT > IPv6 addr
 #define FIELD_LIMIT  20
 #define DATA_LIMIT   1000

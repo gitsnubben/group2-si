@@ -32,8 +32,8 @@ typedef struct chunk_info {
 
 typedef struct packet_info {
 	unsigned short int ip_version;      //Parsed in gather_L3_header_info()
-	char snd_addr[FIELD_LIMIT]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
-	char rcv_addr[FIELD_LIMIT]; //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	char snd_addr[FIELD_LIMIT];         //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
+	char rcv_addr[FIELD_LIMIT];         //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
 	unsigned short int ip_addr_size;    //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info()
 	unsigned short int layer4_prot;     //Parsed in gather_ipv4_header_info() or in gather_ipv6_header_info() 
 	unsigned short int snd_port;        //Parsed in gather_tcp_header_info() or gather_sctp_header_info()
@@ -44,7 +44,7 @@ typedef struct packet_info {
 typedef struct packet_info* packet_info_ptr;
 typedef struct chunk_info* chunk_info_ptr;
 
-packet_info  get_packet_info         (pkt_ptr pkt_arr);
+packet_info* get_packet_info         (pkt_ptr pkt_arr);
 char*        make_ip_readable        (char* redable, char* addr, int size); // does this one even exist?
 char*        make_port_readable      (char* readable_port, char* port);
 void         print_raw               (char* string, int limit);

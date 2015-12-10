@@ -84,41 +84,11 @@ void compute_srtt(void *pfx, void *data)
 void pmeasure_setup()
 {
 	DLOG(MAM_PMEASURE_NOISY_DEBUG0, "Setting up pmeasure \n");
-	//get_state();
-	//set_partner_status(1);
-	
-/*	char snd_intents[20];
-	char rcv_intents[20];
-	
-	snd_intents[0]= 10;
-	snd_intents[1]= 0;
-	snd_intents[2]= 0;
-	snd_intents[3]= 3;
-
-	rcv_intents[0]= 10;
-	rcv_intents[1]= 0;
-	rcv_intents[2]= 0;
-	rcv_intents[3]= 4;
-	
-	create_and_add_item_to_list(snd_intents, rcv_intents, 0, 0, 0);
-	create_and_add_item_to_list(rcv_intents, snd_intents, 0, 0, 0);
-	print_list();
-	*/
-	/*int pid = fork();
-	if(pid == 0)
-	{
-		char *cmd[] = {(char*)0};
-		if(execvp("../mam/mam_sniffer", cmd) == EXEC_ERROR) 
-		{ 
-			if(TRACE_ERROR) { printf("\n    EXEC ERROR: could not start sniffer"); } 
-		} 
-	}*/
 }
 
 void pmeasure_cleanup()
 {
 	DLOG(MAM_PMEASURE_NOISY_DEBUG0, "Cleaning up\n");
-	set_partner_status(0);
 }
 
 void pmeasure_callback(evutil_socket_t fd, short what, void *arg)

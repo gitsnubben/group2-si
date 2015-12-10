@@ -410,13 +410,9 @@ void gather_ipv4_header_info(pkt_ptr pkt, packet_info_ptr info)
 {
 	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv4_header"); }     
 	set_ip_header_size(get_num_ipv4_ihl(pkt));
-	//   READABLE
 	char readable_addr[FIELD_LIMIT];
 	memcpy(info->snd_addr, make_ipv4_readable(readable_addr, &get_ipv4_snd_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 snd address
 	memcpy(info->rcv_addr, make_ipv4_readable(readable_addr, &get_ipv4_rcv_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 rcv address
-	//   NOT READABLE
-	//memcpy(info->snd_addr, &get_ipv4_snd_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 snd address
-	//memcpy(info->rcv_addr, &get_ipv4_rcv_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 rcv address
 	info->layer4_prot = get_num_ipv4_prot(pkt);                         //Adding layer 4 protocol
 	info->ip_addr_size = 4;                                             //Adding layer 3 address size
 	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv4_header");  }    
@@ -426,13 +422,9 @@ void gather_ipv6_header_info(pkt_ptr pkt, packet_info_ptr info)
 {
 	if(TRACE_PARSE) { log_trace("ENTERING: gather_data_from_ipv6_header"); } 
 	set_ip_header_size(get_ipv6_header_size());
-	//   READABLE
 	char readable_addr[FIELD_LIMIT];
 	memcpy(info->snd_addr, make_ipv4_readable(readable_addr, &get_ipv6_snd_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 snd address
 	memcpy(info->rcv_addr, make_ipv4_readable(readable_addr, &get_ipv6_rcv_addr(pkt).field_data[0]), FIELD_LIMIT); //Adding layer 3 rcv address
-	//   NOT READABLE 
-	//memcpy(info->snd_addr, &get_ipv6_snd_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 snd address
-	//memcpy(info->rcv_addr, &get_ipv6_rcv_addr(pkt).field_data[0], FIELD_LIMIT); //Adding layer 3 rcv address
 	info->layer4_prot = get_num_ipv6_prot(pkt);                                         //Adding layer 4 protocol
 	info->ip_addr_size = 16;                                                            //Adding layer 3 address size
 	if(TRACE_PARSE) { log_trace("LEAVING: gather_data_from_ipv6_header");  }  	      
@@ -450,6 +442,7 @@ void gather_tcp_header_info(pkt_ptr pkt, packet_info_ptr info)
 	info->rcv_port           = get_num_tcp_rcv_port(pkt);                                //Adding rcv port          
 	info->chunk->layer4_type = get_num_tcp_is_ack(pkt);                                  //Adding is ack
 	info->chunk->seq_nr      = get_num_tcp_seq_nr(pkt);                                  //Adding seq nr
+	info->chunk->next_chunk  = NULL;
 	if(info->chunk->layer4_type) { info->chunk->ack_nr = get_num_tcp_ack_nr(pkt); }      //Adding ack nr if packet is ack
 	if(TRACE_PARSE)       { log_trace("LEAVING: gather_tcp_header_info");  }  	
 }
@@ -463,6 +456,7 @@ chunk_info_ptr gather_sctp_chunk_header_info(pkt_ptr pkt)
 	chunk->ack_nr        = get_num_sctp_tsn(pkt);
 	chunk->packet_size   = get_num_sctp_length(pkt);
 	chunk->retain_diff   = 0;
+	chunk->next_chunk    = NULL;
 	if(TRACE_PARSE)       { log_trace("LEAVING: gather_sctp_chunk_header_info");  }
 	return chunk;
 }
@@ -470,16 +464,18 @@ chunk_info_ptr gather_sctp_chunk_header_info(pkt_ptr pkt)
 void gather_sctp_header_info(pkt_ptr pkt, packet_info_ptr info)
 {
 	if(TRACE_PARSE)       { log_trace("ENTERING: gather_sctp_header_info"); } 
+	int last_chunk_jump = 0;
 	chunk_info_ptr old_head;
 	info->snd_port    = get_num_sctp_snd_port(pkt);                     //Adding snd port 
 	info->rcv_port    = get_num_sctp_rcv_port(pkt);                     //Adding rcv port 
 	reset_to_first_chunk(); 
 	do { 
+		last_chunk_jump = sctp_jump();
 		old_head = info->chunk;                             //Saving head as old_head
 		info->chunk = gather_sctp_chunk_header_info(pkt);   //Getting new head
 		info->chunk->next_chunk = old_head;                 //Old head placed as tail of new head
 		get_next_sctp_data_chunk(pkt); 
-	} while(SCTP_CHUNK_JUMP < pkt->packet_size);
+	} while(SCTP_CHUNK_JUMP < pkt->packet_size && last_chunk_jump < sctp_jump());
 	if(TRACE_PARSE)       { log_trace("LEAVING: gather_sctp_header_info");  }  	
 }
 
@@ -508,14 +504,14 @@ void gather_L4_header_info(pkt_ptr pkt, packet_info_ptr info)
 	else                                     { info->layer4_prot = 0;              }
 }
 
-packet_info packet_info_init()
+packet_info* packet_info_init()
 {
-	packet_info info;
-	memset(info.snd_addr, 0, FIELD_LIMIT);
-	memset(info.rcv_addr, 0, FIELD_LIMIT);
-	info.ip_version = 0;     info.ip_addr_size = 0;
-	info.layer4_prot = 0;    info.snd_port = 0;
-	info.rcv_port = 0;       info.chunk = NULL;
+	packet_info* info = malloc(sizeof(packet_info));
+	memset(info->snd_addr, 0, FIELD_LIMIT);
+	memset(info->rcv_addr, 0, FIELD_LIMIT);
+	info->ip_version = 0;     info->ip_addr_size = 0;
+	info->layer4_prot = 0;    info->snd_port = 0;
+	info->rcv_port = 0;       info->chunk = NULL;
 	return info;
 }
 
@@ -528,14 +524,14 @@ packet_info packet_info_init()
 /* - Main parse function -                                            */
 /**********************************************************************/
 
-packet_info get_packet_info(pkt_ptr pkt)
+packet_info* get_packet_info(pkt_ptr pkt)
 {
 	if(TRACE_FLOW) { log_trace("ENTERING: get_packet_info"); }
-	packet_info info = packet_info_init();
+	packet_info* info = packet_info_init();
 	
-	gather_L2_header_info(pkt, &info); //Gathers nothing for now
-	gather_L3_header_info(pkt, &info); //Must parse IP-version and IHL before L4; gathers IP version, L3 addresses, and L4 protocol
-	gather_L4_header_info(pkt, &info); //Layer 3 must have been parsed prior to cal; gathers L4 ports, seq and ack numbers & ack status
+	gather_L2_header_info(pkt, info); //Gathers nothing for now
+	gather_L3_header_info(pkt, info); //Must parse IP-version and IHL before L4; gathers IP version, L3 addresses, and L4 protocol
+	gather_L4_header_info(pkt, info); //Layer 3 must have been parsed prior to cal; gathers L4 ports, seq and ack numbers & ack status
 	
 	if(TRACE_FLOW) { log_trace("LEAVING: get_packet_info"); }
 	return info;
@@ -1011,22 +1007,22 @@ void test_parse_ipv4_packet(pkt_ptr pkt, u_int version, u_int ihl, u_int ip_payl
 
 void test_get_packet_info(pkt_ptr pkt)
 {
-	packet_info new = get_packet_info(pkt);
+	packet_info* new = get_packet_info(pkt);
 	if(get_num_ip_version(pkt) == 4)
 	{
 		set_ip_header_size(get_num_ipv4_ihl(pkt));
-		printf("\n  CONVERTED: %s -> %s", &get_ipv4_snd_addr(pkt).field_data[0], new.snd_addr);
-		printf("\n  CONVERTED: %s -> %s", &get_ipv4_rcv_addr(pkt).field_data[0], new.rcv_addr);
+		printf("\n  CONVERTED: %s -> %s", &get_ipv4_snd_addr(pkt).field_data[0], new->snd_addr);
+		printf("\n  CONVERTED: %s -> %s", &get_ipv4_rcv_addr(pkt).field_data[0], new->rcv_addr);
 	}
 	else if(get_num_ip_version(pkt) == 6)
 	{
 		set_ip_header_size(IPV6_HEADER);
-		printf("\n  CONVERTED: %s -> %s", &get_ipv6_snd_addr(pkt).field_data[0], new.snd_addr);
-		printf("\n  CONVERTED: %s -> %s", &get_ipv6_rcv_addr(pkt).field_data[0], new.rcv_addr);
+		printf("\n  CONVERTED: %s -> %s", &get_ipv6_snd_addr(pkt).field_data[0], new->snd_addr);
+		printf("\n  CONVERTED: %s -> %s", &get_ipv6_rcv_addr(pkt).field_data[0], new->rcv_addr);
 	}
 	else { printf("\n  ERROR: unknown network protocol (%u)!", get_num_ip_version(pkt)); }
-	printf("\n  CONVERTED: %s -> %u", &get_sctp_snd_port(pkt).field_data[0], new.snd_port);
-	printf("\n  CONVERTED: %s -> %u", &get_sctp_rcv_port(pkt).field_data[0], new.rcv_port);
+	printf("\n  CONVERTED: %s -> %u", &get_sctp_snd_port(pkt).field_data[0], new->snd_port);
+	printf("\n  CONVERTED: %s -> %u", &get_sctp_rcv_port(pkt).field_data[0], new->rcv_port);
 }
 
 /**********************************************************************/
