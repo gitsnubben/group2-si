@@ -443,7 +443,6 @@ void print_statistics()
 	if(TRACE_FLOW)    { sniffer_trace("LEAVING: print_statistics");  }
 }
 
-
 /**********************************************************************/
 /* - End -                                                            */
 /**********************************************************************/
@@ -756,7 +755,7 @@ void daemonize()
 
 int main()
 {	
-	//setup_query_listener();
+	setup_query_listener();
 	gather_data();
 	return 0;
 }

@@ -18,7 +18,7 @@ query_addrs* fetch_query();
 
 void close_query_dispatcher(); 
 void close_query_listener(); 
-void setup_query_listener(); 
+void setup_query_listener();
 
 path_traits* convert_reply_to_struct(path_traits* paths, char* array);
 query_addrs* convert_query_to_struct(query_addrs* addrs, char* array);

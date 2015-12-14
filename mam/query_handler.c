@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "query_handler.h"
 
@@ -27,6 +28,16 @@ int copy_data_to_array(int data, char* array, int index);
 int copy_addr_list_to_array(ip_addr_ptr addr, char* array, int index);
 void reset_reply();
 void reset_query();
+int string_to_int(char* string);
+int skip_index_passed_item_delimiters(char* array, int index);
+int skip_index_passed_list_delimiters(char* array, int index);
+int skip_index_passed_delimiters(char* array, int index);
+int copy_data_from_array(char* dest, char* array, int index);
+int copy_num_from_array(int* trait, char* array, int index);
+int copy_to_trait_struct_from_array(path_traits* path, char* array, int index);
+int copy_to_addr_list_struct_from_array(ip_addr_ptr head, char* array, int index);
+void init_global_socket_structs();
+void setup_query_dispatcher(); 
 
 /**********************************************************************/
 /*                                                                    */
@@ -304,8 +315,8 @@ int sniffer_sockfd = 0;
 struct sockaddr_in sniffer_addr;
 socklen_t sniffer_addr_len; 
 
-void setup_socket_endpoints() {
-	if(TRACE_QH_FLOW) { trace_log("ENTERING: setup_socket_endpoints"); }
+void init_global_socket_structs() {
+	if(TRACE_QH_FLOW) { trace_log("ENTERING: init_global_socket_structs"); }
 	policy_addr_len = (int)sizeof(struct sockaddr_in);
 	sniffer_addr_len = (int)sizeof(struct sockaddr_in);
 	
@@ -318,7 +329,7 @@ void setup_socket_endpoints() {
 	sniffer_addr.sin_family = AF_INET;
 	sniffer_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	sniffer_addr.sin_port = htons(SNIFFER_PORT);
-	if(TRACE_QH_FLOW) { trace_log("LEAVING: setup_socket_endpoints"); }
+	if(TRACE_QH_FLOW) { trace_log("LEAVING: init_global_socket_structs"); }
 }
 
 /**********************************************************************/
@@ -328,11 +339,10 @@ void setup_socket_endpoints() {
 void setup_query_dispatcher() {
 	if(TRACE_QH_FLOW) { trace_log("ENTERING: setup_query_dispatcher"); }
 	policy_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	init_global_socket_structs();
 	if(policy_sockfd < 0) { trace_log("ERROR: socket failed!"); } 
-		
-	setup_socket_endpoints();
 	
-	if(bind(policy_sockfd, (struct sockaddr *)&policy_addr, policy_addr_len) < 0) { trace_log("ERROR: bind failed!"); }
+	if(bind(policy_sockfd, (struct sockaddr *)&policy_addr, policy_addr_len) < 0) { trace_log("ERROR: bind failed!"); printf("\nfd: %d", policy_sockfd); }
 	if(TRACE_QH_FLOW) { trace_log("LEAVING: setup_query_dispatcher"); }
 }
 
@@ -375,13 +385,12 @@ void setup_query_listener() {
 	if(TRACE_QH_FLOW) { trace_log("ENTERING: setup_query_listener"); }
 	int flags;	
 	sniffer_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	init_global_socket_structs();
 	if(sniffer_sockfd < 0) { trace_log("ERROR: socket failed!"); }
 	
 	flags = fcntl(sniffer_sockfd, F_GETFL);
 	flags |= O_NONBLOCK;
 	fcntl(sniffer_sockfd, F_SETFL, flags); 
-	
-	setup_socket_endpoints();
 	
 	if(bind(sniffer_sockfd, (struct sockaddr *)&sniffer_addr, sniffer_addr_len) < 0) { trace_log("ERROR: bind failed!"); } 
 	if(TRACE_QH_FLOW) { trace_log("LEAVING: setup_query_listener"); }

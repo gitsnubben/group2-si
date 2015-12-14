@@ -1,6 +1,8 @@
 #ifndef SI_EXP
 #define SI_EXP
 
+#include <ctype.h>
+
 //Trace flow for modules
 #define TRACE_QH_FLOW 0
 
@@ -9,8 +11,8 @@
 #define DATA_LIMIT   1000
 
 //Communication ports between sniffer and policy/MAM
-#define SNIFFER_PORT 34345
-#define POLICY_PORT  43436
+#define SNIFFER_PORT 34343
+#define POLICY_PORT  43434
 
 //Chars used to delimit in format used by query_handler.c
 static const char TERMINATION    = '*' ;

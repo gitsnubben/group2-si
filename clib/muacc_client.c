@@ -398,7 +398,6 @@ int muacc_connect(muacc_context_t *ctx,
 	ctx->ctx->domain = address->sa_family;
 
 	if( _muacc_contact_mam(muacc_act_connect_req, ctx) <0 ){
-		printf("\n 3");
 		_unlock_ctx(ctx);
 		DLOG(CLIB_IF_NOISY_DEBUG0, "got no response from mam - fallback to regular connect\n");
 		goto muacc_connect_fallback;

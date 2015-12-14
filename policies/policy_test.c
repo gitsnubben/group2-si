@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 #include "policy.h"
 #include "policy_util.h"
+#include "../mam/query_handler.h"
+#include "../mam/si_exp.h"
 
 #endif
 
@@ -20,17 +22,18 @@
 
 enum priorities { 
 	HIGH_BANDWIDTH=0,       LOW_DELAY, 
-	LOW_JITTER,             TABLE_HEIGHT /* MUST BE LAST */
+	LOW_JITTER,             LOW_LOSS,
+	TRAIT_COUNT             /* MUST BE LAST */
 };
 
 typedef struct performance { 
-	int performanceArray[TABLE_HEIGHT];
+	int performanceArray[TRAIT_COUNT];
 	int totalValue;
 	src_prefix_list_t *interface;
 	struct performance *next;
 } performance_t;
 
-int prioritiesArray[TABLE_HEIGHT];
+int prioritiesArray[TRAIT_COUNT];
 performance_t *interfaceList = NULL;
 
 #define TRACE_FLOW 1
@@ -94,20 +97,27 @@ void detuneForLossResilient();
 void prioritizeHighBandwidth(int weight);
 void prioritizeLowDelay(int weight);
 void prioritizeLowJitter(int weight);
+void prioritizeLowLoss(int weight);
 void resetLowJitterWeight();
 void resetHighBandwidthWeight();   
 void resetLowDelayWeight();
+void resetLowLossWeight();
 void reset_state();
 
 void init_array_to_zero();
 void set_options(int intent, request_context_t *rctx);
-void fint_intents_in_ctx(struct socketopt *opts);
+void find_intents_in_ctx(struct socketopt *opts);
 void match_cat(socketopt_t *opts);
 void print_addresses(gpointer elem, gpointer data);
-void resolve_priorities();
-void setup_performance_table(int x, int y, int table[x][y]);
-void print_performance_table(int x, int y, int table[x][y]);
-int determine_optimal_interface(int x, int y, int table[x][y]);
+void push_addresses(gpointer elem, gpointer data);
+void resolve_priorities(path_traits* path);
+path_traits* determine_optimal_interface(path_traits* path);
+char* get_readable_addr(char* readable_addr, struct sockaddr* addr);
+void invert_path_values(path_traits* path);
+path_traits* init_norm_path(path_traits* path);
+void nomalize_data(path_traits* path);
+int get_ipv(char* addr);
+void free_path_trait_list(path_traits* path);
 
 /**********************************************************************/
 /*                                                                    */
@@ -259,6 +269,11 @@ void freepolicyinfo(gpointer elem, gpointer data) {
 	}
 }
 
+char* get_readable_addr(char* readable_addr, struct sockaddr* addr) {
+	inet_ntop(AF_INET, &( ((struct sockaddr_in *) addr)->sin_addr ), readable_addr, sizeof(readable_addr));
+	return readable_addr;
+}
+
 /**********************************************************************/
 /*                                                                    */
 /* - MATCH AND SWITCH -                                               */
@@ -272,6 +287,7 @@ void reset_state() {
 	resetHighBandwidthWeight();
 	resetLowDelayWeight();
 	resetLowJitterWeight();
+	resetLowLossWeight();
 }
 
 void match_cat(struct socketopt* opts) {
@@ -469,19 +485,17 @@ void match_cat(struct socketopt* opts) {
 /* - Intent match; add new intents here -                             */
 /**********************************************************************/
 
-void fint_intents_in_ctx(struct socketopt *opts) {
-	if(TRACE_FLOW) { printf("\tENTERING: find_and_return_cat()\n"); fflush(stdout); }
+void find_intents_in_ctx(struct socketopt *opts) {
+	if(TRACE_FLOW) { trace_log("ENTERING: find_intents_in_ctx"); }
 	struct socketopt* temp = opts;
 	while(temp != NULL) {
-		if(TRACE_DETAILED_FLOW) { printf("\t  LOOPING\n"); fflush(stdout); }
 		if(temp->level == SOL_INTENTS) {
-			if(TRACE_DETAILED_FLOW) { printf("\t  MATCHING\n"); fflush(stdout); }
-			if(TRACE_FLOW) { printf("\tLEAVING: find_and_return_cat()\n"); fflush(stdout); }
+			if(TRACE_FLOW) { trace_log("LEAVING: find_intents_in_ctx"); }
 			match_cat(temp);
 		}
 		temp = temp->next;
 	}
-	if(TRACE_FLOW) { printf("\tLEAVING: find_and_return_cat()\n"); fflush(stdout); }
+	if(TRACE_FLOW) { trace_log("LEAVING: find_intents_in_ctx"); }
 }
 
 /**********************************************************************/
@@ -494,15 +508,17 @@ void fint_intents_in_ctx(struct socketopt *opts) {
 /**********************************************************************/
 
 void prioritizeHighBandwidth(int weight) { prioritiesArray[HIGH_BANDWIDTH] += weight; }
-void prioritizeLowDelay(int weight)      { prioritiesArray[LOW_DELAY] += weight;      }
-void prioritizeLowJitter(int weight)     { prioritiesArray[LOW_JITTER] += weight;     }
-void resetLowJitterWeight()              { prioritiesArray[LOW_JITTER] = 0;           }
-void resetHighBandwidthWeight()          { prioritiesArray[HIGH_BANDWIDTH] = 0;       }
-void resetLowDelayWeight()               { prioritiesArray[LOW_DELAY] = 0;            }
+void prioritizeLowDelay(int weight)      { prioritiesArray[LOW_DELAY]      += weight; }
+void prioritizeLowJitter(int weight)     { prioritiesArray[LOW_JITTER]     += weight; }
+void prioritizeLowLoss(int weight)       { prioritiesArray[LOW_LOSS]       += weight; }
+void resetLowJitterWeight()              { prioritiesArray[LOW_JITTER]      = 0;      }
+void resetHighBandwidthWeight()          { prioritiesArray[HIGH_BANDWIDTH]  = 0;      }
+void resetLowDelayWeight()               { prioritiesArray[LOW_DELAY]       = 0;      }
+void resetLowLossWeight()                { prioritiesArray[LOW_LOSS]        = 0;      }
 
 void init_array_to_zero() {
 	int index = 0;
-	while(index < TABLE_HEIGHT) {
+	while(index < TRAIT_COUNT) {
 		prioritiesArray[index++] = 0;
 	}
 }
@@ -520,49 +536,29 @@ void print_addresses(gpointer elem, gpointer data) {
 	}
 }
 
-void print_performance_table(int x, int y, int table[x][y]) {
-	printf("\n\t  Performance table:\n");
-	printf("\t    Interfaces:      ");
-	for(int j = 0; j < x; j++) {
-		printf("%4d", j);
+void push_addresses(gpointer elem, gpointer data) {
+	struct src_prefix_list *pfx = elem;
+	char addr_str[INET6_ADDRSTRLEN+1];
+	if (pfx->family == AF_INET) {
+		inet_ntop(AF_INET, &( ((struct sockaddr_in *) (pfx->if_addrs->addr))->sin_addr ), addr_str, sizeof(addr_str));
+		push_query_snd_addr(addr_str);
 	}
-	printf("\n");
-	for(int i = 0; i < y; i++) {
-		printf("\t    Characteristic %d:", i+1);
-		for(int j = 0; j < x; j++) {
-			printf("%4d", table[j][i]);
-		}
-		printf("\n");
-	}
-	printf("\n");
 }
 
-int determine_optimal_interface(int x, int y, int table[x][y]) {
-	int result[x];
-	memset(result, 0, sizeof(int)*x);
-	for(int i = 0; i < x; i++) {
-		for(int j = 0; j < y; j++) {
-			result[i] += prioritiesArray[j]*table[i][j];
-		}
+path_traits* determine_optimal_interface(path_traits* path) {
+	int best_score = 0;
+	path_traits* best_path = path;
+	while(path != NULL) {
+		int new_score  = path->norm_srtt * prioritiesArray[LOW_DELAY];
+		new_score     += path->norm_jitt * prioritiesArray[LOW_JITTER];
+		new_score     += path->norm_loss * prioritiesArray[LOW_LOSS];
+		new_score     += path->norm_rate * prioritiesArray[HIGH_BANDWIDTH];
+		if(new_score >= best_score) { best_path = path; best_score = new_score; }
+		path = path->next;
 	}
-	int interface = 0, max = 0;
-	for(int i = 0; i < x; i++) {
-		if(TRACE_DETAILED_FLOW) { printf("\t  Result for %d: %d\n", i, result[i]); }
-		if(result[i] > max) { max = result[i]; interface = i; }
-	}
-	return interface;
+	return best_path;
 }
 
-void setup_performance_table(int x, int y, int table[x][y]) {
-	memset(table, 0, sizeof(int)*x*y);
-	table[0][0] = 100;
-	table[0][1] = 100;
-	table[0][2] = 90;
-	table[1][0] = 90;
-	table[1][1] = 90;
-	table[1][2] = 100;
-	if(TRACE_DETAILED_FLOW) { print_performance_table(x, y, table); }
-}
 struct sockaddr* get_nth_interface(int index, socklen_t *addr_len);
 struct sockaddr* get_nth_interface(int index, socklen_t *addr_len) { 
 	struct src_prefix_list *pfx = g_slist_nth_data(in4_enabled, index);
@@ -576,25 +572,88 @@ struct sockaddr* get_nth_interface(int index, socklen_t *addr_len) {
 int TABLE_WIDTH();
 int TABLE_WIDTH() { return g_slist_length(in4_enabled) + g_slist_length(in6_enabled); }
 
-void resolve_priorities() {
-	if(TRACE_FLOW) { printf("\tENTERING: resolve_priorities()\n"); fflush(stdout); }
-	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED) {
-		int performance_table[TABLE_WIDTH()][TABLE_HEIGHT];
-		setup_performance_table(TABLE_WIDTH(), TABLE_HEIGHT, performance_table);
-		int optimal_interface = determine_optimal_interface(TABLE_WIDTH(), TABLE_HEIGHT, performance_table);	
-		struct sockaddr *new = malloc(sizeof(struct sockaddr));
-		socklen_t *addr_len = malloc(sizeof(socklen_t));
-		memcpy(new, get_nth_interface(optimal_interface, addr_len), sizeof(struct sockaddr));
-		rctx->ctx->bind_sa_suggested     = new;
-		rctx->ctx->bind_sa_suggested_len = *addr_len;
-		free(addr_len);
-		
-		if(TRACE_DETAILED_FLOW) { printf("\t  Optimal interface: %d\n", optimal_interface); }
-		if(TRACE_DETAILED_FLOW) { g_slist_foreach(in4_enabled, &print_addresses, NULL); } 
-		if(TRACE_DETAILED_FLOW) { char addr_str[INET6_ADDRSTRLEN+1]; inet_ntop(AF_INET, &( ((struct sockaddr_in *) (new))->sin_addr ), addr_str, sizeof(addr_str)); printf("\t  ADDRESS CHOSEN: %s\n", addr_str); }
+void invert_path_values(path_traits* path) {
+	while(path != NULL) {
+		path->norm_srtt = 100000.0 / path->norm_srtt; 
+		path->norm_jitt = 100000.0 / path->norm_jitt; 
+		path->norm_loss = 100000.0 / path->norm_loss; 
+		path = path->next;
 	}
-	else if(TRACE_DETAILED_FLOW) printf("\t  BIND ALREADY PERFORMED\n");
-	if(TRACE_FLOW) { printf("\tLEAVING: resolve_priorities()\n"); fflush(stdout); }
+}
+
+path_traits* init_norm_path(path_traits* path) {
+	path_traits* norm = malloc(sizeof(path_traits));
+	norm->norm_srtt = INT_MAX;
+	norm->norm_jitt = INT_MAX;
+	norm->norm_loss = INT_MAX;
+	norm->norm_rate = 0;
+	while(path != NULL) {
+		if(path->norm_srtt < norm->norm_srtt) { norm->norm_srtt = path->norm_srtt; }
+		if(path->norm_jitt < norm->norm_jitt) { norm->norm_jitt = path->norm_jitt; }
+		if(path->norm_loss < norm->norm_loss) { norm->norm_loss = path->norm_loss; }
+		if(path->norm_rate > norm->norm_rate) { norm->norm_rate = path->norm_rate; }
+		path = path->next;
+	}
+	return norm;
+}
+
+void nomalize_data(path_traits* path) {
+	invert_path_values(path);
+	path_traits* norm = init_norm_path(path);
+	while(path != NULL) {
+		path->norm_srtt = 1.0 / (path->norm_srtt * 100.0 ) / norm->norm_srtt;
+		path->norm_jitt = 1.0 / (path->norm_jitt * 100.0 ) / norm->norm_jitt;
+		path->norm_loss = 1.0 / (path->norm_loss * 100.0 ) / norm->norm_loss;
+		path->norm_rate = 1.0 / (path->norm_rate * 100.0 ) / norm->norm_rate;
+		path = path->next;
+	}
+	free(norm);
+}
+
+int get_ipv(char* addr) { 
+	int index = 0;
+	while(isdigit(addr[index]) && index < FIELD_LIMIT) { index++; }
+	return (addr[index] == '.') ? AF_INET : AF_INET6;
+}
+
+void free_path_trait_list(path_traits* path) {
+	path_traits* temp;
+	while(path != NULL) {
+		temp = path;
+		path = path->next;
+		free(temp);
+	}
+}
+
+void resolve_priorities(path_traits* path) {
+	if(TRACE_FLOW) { trace_log("ENTERING: resolve_priorities"); }
+	if((rctx->ctx->calls_performed & MUACC_BIND_CALLED) != MUACC_BIND_CALLED) {
+		if(path != NULL) {
+			nomalize_data(path);
+			path_traits* optimal_interface = determine_optimal_interface(path);
+			
+			struct sockaddr* new = malloc(sizeof(struct sockaddr));
+			memset(new, 0, sizeof(struct sockaddr));
+			inet_pton(AF_INET, optimal_interface->snd_addr, &(((struct sockaddr_in *)(new))->sin_addr));
+			new->sa_family = get_ipv(optimal_interface->snd_addr);
+			rctx->ctx->bind_sa_suggested     = new;
+			rctx->ctx->bind_sa_suggested_len = (socklen_t)sizeof(struct sockaddr_in);
+			
+			struct sockaddr* remote = malloc(sizeof(struct sockaddr));
+			memset(remote, 0, sizeof(struct sockaddr));
+			inet_pton(AF_INET, optimal_interface->rcv_addr, &(((struct sockaddr_in *)(remote))->sin_addr));
+			remote->sa_family = get_ipv(optimal_interface->rcv_addr);
+			rctx->ctx->remote_sa     = remote;
+			rctx->ctx->remote_sa_len = (socklen_t)sizeof(struct sockaddr_in);
+			
+			if(TRACE_DETAILED_FLOW) { g_slist_foreach(in4_enabled, &print_addresses, NULL); } 
+			if(TRACE_DETAILED_FLOW) { char addr_str[INET6_ADDRSTRLEN+1]; inet_ntop(AF_INET, &( ((struct sockaddr_in *) (rctx->ctx->bind_sa_suggested))->sin_addr ), addr_str, sizeof(addr_str)); printf("\t  ADDRESS CHOSEN: %s\n", addr_str); }
+			if(TRACE_DETAILED_FLOW) { char addr_str[INET6_ADDRSTRLEN+1]; inet_ntop(AF_INET, &( ((struct sockaddr_in *) (rctx->ctx->remote_sa))->sin_addr ), addr_str, sizeof(addr_str)); printf("\t  ADDRESS CHOSEN: %s\n", addr_str); }
+		}
+		else if(TRACE_DETAILED_FLOW) { trace_log("  ERROR: no reply to query!"); }
+	}
+	else if(TRACE_DETAILED_FLOW) { trace_log("  ERROR: bind already performed!"); }
+	if(TRACE_FLOW) { trace_log("LEAVING: resolve_priorities"); }
 }
 
 /**********************************************************************/
@@ -617,7 +676,8 @@ int on_resolve_request(request_context_t *rctx_param, struct event_base *base) {
 	rctx = rctx_param;
 	if(TRACE_FLOW) { printf("\tENTERING: on_resolve_request()\n"); fflush(stdout); }
 	reset_state();
-	resolve_priorities();
+	//TODO
+	//resolve_priorities(fetch_reply());
 	if(TRACE_FLOW) { printf("\tLEAVING: on_resolve_request()\n"); fflush(stdout); }
 	return 0;
 }
@@ -625,9 +685,19 @@ int on_resolve_request(request_context_t *rctx_param, struct event_base *base) {
 int on_connect_request(request_context_t *rctx_param, struct event_base *base) {
 	rctx = rctx_param;
 	if(TRACE_FLOW) { printf("\tENTERING: on_connect_request()\n"); fflush(stdout); }
-	reset_state();
-	fint_intents_in_ctx(rctx->ctx->sockopts_current);
-	resolve_priorities();
+	char addr_str[INET6_ADDRSTRLEN+1];
+	find_intents_in_ctx(rctx->ctx->sockopts_current);
+	
+	//Create and commit query
+	g_slist_foreach(in4_enabled, &push_addresses, NULL);
+	inet_ntop(AF_INET, &( ((struct sockaddr_in *) (rctx_param->ctx->remote_sa))->sin_addr ), addr_str, sizeof(addr_str));
+	push_query_rcv_addr(addr_str);
+	commit_query();
+	path_traits* path = fetch_reply();
+	print_struct_reply(path);
+	resolve_priorities(path);
+	free_path_trait_list(path);
+	
 	_muacc_send_ctx_event(rctx, muacc_act_connect_resp);
 	if(TRACE_FLOW) { printf("\tLEAVING: on_connect_request()\n"); fflush(stdout); }
 	return 0;
@@ -642,8 +712,8 @@ int init(mam_context_t *mctx) {
 	g_slist_foreach(mctx->prefixes, &set_policy_info, NULL);
 	make_v4v6_enabled_lists (mctx->prefixes, &in4_enabled, &in6_enabled);
 	init_array_to_zero();
-	g_slist_foreach(mctx->prefixes, &print_addresses, NULL);
-	g_slist_foreach(in4_enabled, &print_addresses, NULL);
+	//g_slist_foreach(mctx->prefixes, &print_addresses, NULL);
+	//g_slist_foreach(in4_enabled, &print_addresses, NULL);
 	if(TRACE_FLOW) { printf("\n\tLEAVING: init()\n"); fflush(stdout); }
 	return 0;
 }
@@ -653,6 +723,7 @@ int cleanup(mam_context_t *mctx) {
 	g_slist_free(in4_enabled);
 	g_slist_free(in6_enabled);
 	g_slist_foreach(mctx->prefixes, &freepolicyinfo, NULL);
+	close_query_dispatcher();
 	if(TRACE_FLOW) { printf("\n\tLEAVING: cleanup()\n"); fflush(stdout); }
 	return 0;
 }

@@ -56,7 +56,6 @@ ssize_t _muacc_push_tlv( char *buf, ssize_t *buf_pos, ssize_t buf_len,
 		DLOG(MUACC_TLV_NOISY_DEBUG0, "WARNING: buffer too small: buf_len=%li, pos=%li needed=%li\n", (long) buf_len, (long) *buf_pos, (long) tlv_len);
 		return(-1);
 	}
-
 	*((muacc_tlv_t *) (buf + *buf_pos)) = tag;
 	*buf_pos += sizeof(muacc_tlv_t);
 
@@ -72,9 +71,7 @@ ssize_t _muacc_push_tlv( char *buf, ssize_t *buf_pos, ssize_t buf_len,
 		memcpy( (void *) (buf + *buf_pos), data,  data_len);
 		*buf_pos += data_len;
 	}
-
 	DLOG(MUACC_TLV_NOISY_DEBUG2, "put tlv: buf_pos=%ld tag=%x data_len=%ld tlv_len=%ld \n", (long int) *buf_pos, tag, (long int) data_len, (long int) tlv_len);
-
 	return(tlv_len);
 }
 
