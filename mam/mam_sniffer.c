@@ -28,7 +28,7 @@ int pairs   = 0;
 
 #define BUFFER_SIZE 65536
 #define PAIR_TTL 60      // TTL in seconds, freeing memory used by this pair.
-#define DATA_IS_OLD 1     // data is old after xx seconds
+#define DATA_IS_OLD 2     // data is old after xx seconds
 
 typedef struct packet_list {
 	packet_info* pkt_info;
@@ -60,12 +60,9 @@ char rcv_intents[20];
 
 void sniffer_trace(char* message) { printf("\n  %s", message); fflush(stdout); } // Declared in mam_addr_manager.c
 int count_packets();
-/*
- * 
- * REMOVE LATER
- * 
- * */
-void print_marcus_header (char* buffer, int size, char* rcv_addr)
+
+// For debug purposes
+void print_packet_header(char* buffer, int size, char* rcv_addr)
 {
 	static int number_of_packets = 0;
 	int i;
@@ -158,7 +155,6 @@ void free_pair_and_packets(snd_rcv_pair* pair)
 		pkt = pair->pkts;
 		pair->pkts = pkt->next;
 		free_pkt(pkt);
-		//printf("\npackets in list: %d   packets counted: %d", packets, count_packets()); fflush(stdout);
 	}
 	free(pair);
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: free_pair_and_packets");    }
@@ -210,7 +206,6 @@ void add_packet_to_list(packet_list* pkt, snd_rcv_pair* pair)
 	if (pair->pkts == NULL) { pkt->next = NULL; pair->pkts = pkt;      }
 	else                    { pkt->next = pair->pkts; pair->pkts = pkt;}
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: add_packet_to_list");     }
-	//printf("\npackets in list: %d   packets counted: %d", packets, count_packets()); fflush(stdout);
 }
 
 
@@ -224,7 +219,6 @@ void remove_acked_packets(packet_list* head)
 		pkt = head;
 		head = head->next;
 		free_pkt(pkt);
-		//printf("\npackets in list: %d   packets counted: %d", packets, count_packets()); fflush(stdout);
 	}
 	if(TRACE_FLOW) { sniffer_trace("LEAVING: remove_acked_packets"); }
 }
@@ -258,8 +252,9 @@ void print_pair_list()
 int addr_cmp(char* snd_addr, char* rcv_addr, int size)
 {
 	if(TRACE_FLOW) { sniffer_trace("ENTERING: addr_cmp"); }
-	int i = 0;
-	for(i = 0; i < size; i++)
+	int i = 0, snd_len = strlen(snd_addr), rcv_len = strlen(rcv_addr);
+	if(snd_len != rcv_len) { if(TRACE_FLOW) { sniffer_trace("LEAVING: addr_cmp"); } return 0; }
+	for(i = 0; i < snd_len; i++)
 	{
 		if (snd_addr[i] != rcv_addr[i]) { if(TRACE_FLOW) { sniffer_trace("LEAVING: addr_cmp"); } return 0; }
 	}
@@ -686,7 +681,6 @@ void gather_data()
 	{
 		addrs = fetch_query(buffer);
 		if(addrs != NULL) { 
-			printf("\nnew query");
 			process_query(addrs);
 			free_addrs_struct(addrs);
 			commit_reply();
@@ -705,18 +699,10 @@ void gather_data()
 		
 		if((get_time_stamp() - last_update) > DATA_IS_OLD)
 		{ 
-			//printf("\npairs in list:   %d   pairs counted:   %d", pairs, count_pairs()); fflush(stdout);
-			//printf("\npackets in list: %d   packets counted: %d", pairs, count_pairs()); fflush(stdout);
-			//print_pair_list();
 			print_statistics();
 			remove_old(get_time_stamp()); 
 			last_update = get_time_stamp();
 		}
-	/*	if((get_time_stamp() - closing_time) > 20)
-		{ 
-			close(sockfd);
-			return ;
-		}*/
 	}
 	if(TRACE_FLOW) { sniffer_trace("  SHUTTING DOWN SNIFFER"); }
     close(sockfd);
