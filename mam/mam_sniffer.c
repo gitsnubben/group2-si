@@ -14,12 +14,14 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <signal.h>
 //#include "mam_addr_manager.h"
 #include "header_parser.h"
 #include "si_exp.h"
 #include "query_handler.h"
 
 #define TRACE_FLOW 0          //Only trace if no daemonize
+static volatile int keep_running = 1; // graceful shutdown
 const float ALPHA = 0.125;           // the aplha constant in rtt calcualtions
 const float BETA  = 0.250;
 
@@ -76,6 +78,8 @@ void print_packet_header(char* buffer, int size, char* rcv_addr)
 	
 	fclose(f);
 }
+
+void signal_handler(int dummy) { keep_running = 0; }
 
 /**********************************************************************/
 /*                                                                    */
@@ -677,8 +681,9 @@ void gather_data()
 	long long last_update = get_time_stamp();
 	long long closing_time = get_time_stamp();
 			
-	while(1)
+	while(keep_running)
 	{
+		signal(SIGINT, signal_handler);
 		addrs = fetch_query(buffer);
 		if(addrs != NULL) { 
 			process_query(addrs);
@@ -704,6 +709,7 @@ void gather_data()
 			last_update = get_time_stamp();
 		}
 	}
+	
 	if(TRACE_FLOW) { sniffer_trace("  SHUTTING DOWN SNIFFER"); }
     close(sockfd);
     //close_file();
