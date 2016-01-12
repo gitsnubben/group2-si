@@ -369,13 +369,11 @@ int muacc_connect(muacc_context_t *ctx,
 	
 	if( ctx == NULL )
 	{
-		printf("\n 0");
 		DLOG(CLIB_IF_NOISY_DEBUG1, "NULL context - fallback to regular connect\n");
 		goto muacc_connect_fallback;
 	}
 	else if( ctx->ctx == NULL )
 	{
-		printf("\n 1");
 		DLOG(CLIB_IF_NOISY_DEBUG1, "context uninitialized - trying to initialize\n");
 		muacc_init_context(ctx);
 		if( ctx->ctx == NULL )
@@ -384,7 +382,6 @@ int muacc_connect(muacc_context_t *ctx,
 
 	if( _lock_ctx(ctx) )
 	{
-		printf("\n 2");
 		DLOG(CLIB_IF_NOISY_DEBUG0, "WARNING: context already in use - fallback to regular connect\n");
 		_unlock_ctx(ctx);
 		goto muacc_connect_fallback;
@@ -456,7 +453,16 @@ int muacc_connect(muacc_context_t *ctx,
 	inet_ntop(AF_INET, &(rcv_addr->sin_addr), rcv, 30);
 	inet_ntop(AF_INET, &(snd_addr->sin_addr), snd, 30);
 	printf("\nrcv_addr: %s\nsnd_addr: %s", rcv, snd);*/
-
+	
+	struct sockaddr_in* remote = (struct sockaddr_in*) ctx->ctx->remote_sa;
+	struct sockaddr_in* addr = (struct sockaddr_in*) address;
+	char rcv[30];
+	char add[30];
+	inet_ntop(AF_INET, &(remote->sin_addr), rcv, 30);
+	inet_ntop(AF_INET, &(addr->sin_addr), add, 30);
+	printf("\nremote_addr: %s len: %d", rcv, ctx->ctx->remote_sa_len);
+	printf("\nrcv_addr: %s len: %d", add, address_len);
+	
 	return connect(socket, ctx->ctx->remote_sa, ctx->ctx->remote_sa_len);
 
 

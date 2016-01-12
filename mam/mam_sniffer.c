@@ -29,7 +29,7 @@ int packets = 0;
 int pairs   = 0;          
 
 #define BUFFER_SIZE 65536
-#define PAIR_TTL 60      // TTL in seconds, freeing memory used by this pair.
+#define PAIR_TTL 600      // TTL in seconds, freeing memory used by this pair.
 #define DATA_IS_OLD 2     // data is old after xx seconds
 
 typedef struct packet_list {

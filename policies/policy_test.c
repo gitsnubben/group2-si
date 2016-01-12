@@ -174,19 +174,27 @@ void setKeepalive(int bool);
 /**********************************************************************/
 /* - Categories -                                                     */
 /**********************************************************************/
+
 void tuneForBulkCategory() { 
-	prioritizeHighBandwidth(3);
-	prioritizeLowDelay(3);
-	prioritizeLowJitter(4);
+	prioritizeLowDelay(1);
+	prioritizeLowJitter(1);
+	prioritizeHighBandwidth(50);
 }
+
 void tuneForQueryCategory() { }
-void tuneForStreamCategory() { }
+void tuneForStreamCategory() { 
+	prioritizeLowDelay(50);
+	prioritizeLowJitter(1);
+	prioritizeHighBandwidth(1);
+}
+
 void tuneForControlTrafficCategory() { }
 void tuneForKeepaliveCategory() { }
 
 void detuneForBulkCategory() { }
 void detuneForQueryCategory() { }
 void detuneForStreamCategory() { }
+
 void detuneForControlTrafficCategory() { }
 void detuneForKeepaliveCategory() { }
 
@@ -490,7 +498,6 @@ void find_intents_in_ctx(struct socketopt *opts) {
 	struct socketopt* temp = opts;
 	while(temp != NULL) {
 		if(temp->level == SOL_INTENTS) {
-			if(TRACE_FLOW) { trace_log("LEAVING: find_intents_in_ctx"); }
 			match_cat(temp);
 		}
 		temp = temp->next;
@@ -604,7 +611,7 @@ void nomalize_data(path_traits* path) {
 		path->norm_srtt = 1.0 / (path->norm_srtt * 100.0 ) / norm->norm_srtt;
 		path->norm_jitt = 1.0 / (path->norm_jitt * 100.0 ) / norm->norm_jitt;
 		path->norm_loss = 1.0 / (path->norm_loss * 100.0 ) / norm->norm_loss;
-		path->norm_rate = 1.0 / (path->norm_rate * 100.0 ) / norm->norm_rate;
+		path->norm_rate = 1.0 / (path->norm_rate * 100.0 ) / norm->norm_rate; //This is the wrong normalization!
 		path = path->next;
 	}
 	free(norm);
@@ -639,12 +646,13 @@ void resolve_priorities(path_traits* path) {
 			rctx->ctx->bind_sa_suggested     = new;
 			rctx->ctx->bind_sa_suggested_len = (socklen_t)sizeof(struct sockaddr_in);
 			
-			struct sockaddr* remote = malloc(sizeof(struct sockaddr));
+			// Need to be debugged
+			/*struct sockaddr* remote = malloc(sizeof(struct sockaddr));
 			memset(remote, 0, sizeof(struct sockaddr));
 			inet_pton(AF_INET, optimal_interface->rcv_addr, &(((struct sockaddr_in *)(remote))->sin_addr));
 			remote->sa_family = get_ipv(optimal_interface->rcv_addr);
 			rctx->ctx->remote_sa     = remote;
-			rctx->ctx->remote_sa_len = (socklen_t)sizeof(struct sockaddr_in);
+			rctx->ctx->remote_sa_len = (socklen_t)sizeof(struct sockaddr_in);*/
 			
 			if(TRACE_DETAILED_FLOW) { g_slist_foreach(in4_enabled, &print_addresses, NULL); } 
 			if(TRACE_DETAILED_FLOW) { char addr_str[INET6_ADDRSTRLEN+1]; inet_ntop(AF_INET, &( ((struct sockaddr_in *) (rctx->ctx->bind_sa_suggested))->sin_addr ), addr_str, sizeof(addr_str)); printf("\t  ADDRESS CHOSEN: %s\n", addr_str); }

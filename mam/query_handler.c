@@ -274,10 +274,10 @@ void push_reply_addr_pair(char* snd_addr, char* rcv_addr, int srtt, int jitt, in
 		reply_index = copy_addr_to_array(snd_addr, reply_to_send, reply_index);
 		reply_index = copy_addr_to_array(rcv_addr, reply_to_send, reply_index);
 		
-		reply_index = copy_data_to_array(srtt, reply_to_send, reply_index);
-		reply_index = copy_data_to_array(jitt, reply_to_send, reply_index);
-		reply_index = copy_data_to_array(loss, reply_to_send, reply_index);
-		reply_index = copy_data_to_array(rate, reply_to_send, reply_index);
+		reply_index = copy_data_to_array(srtt/1000, reply_to_send, reply_index);
+		reply_index = copy_data_to_array(jitt/1000, reply_to_send, reply_index);
+		reply_index = copy_data_to_array(loss/1000, reply_to_send, reply_index);
+		reply_index = copy_data_to_array(rate/1000, reply_to_send, reply_index);
 		
 		reply_index =  add_list_end(reply_to_send, reply_index);
 	}
